@@ -1,3 +1,8 @@
+## Generative function, trace and choicemaps for Boltzmann trajectories ##
+export TrajectoryChoiceMap, TrajectoryTrace
+export BoltzmannTrajectoryArgs, BoltzmannTrajectoryGF
+export boltzmann_trajectory_2D, boltzmann_trajectory_3D
+
 ## Trajectory ChoiceMap ##
 
 struct TrajectoryChoiceMap{M <: AbstractMatrix, I} <: ChoiceMap

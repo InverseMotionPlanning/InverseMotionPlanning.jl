@@ -12,10 +12,16 @@ Enter `Pkg` mode in the Julia REPL by pressing `]`, then run:
 instantiate
 ```
 
-to install all required dependencies.
+to install all required dependencies. Now exit `Pkg` mode and run:
+
+```julia
+using InverseTAMP
+```
+
+to call functions in the package.
 
 ## Usage
 
-The top-level script is `main.jl`, which can be executed line-by-line in your editor of choice (Julia for VSCode is recommended.)
-
-In the future this will be turned into a Julia package that supports precompilation, etc.
+After running `using InverseTAMP`, you can now run the examples in the `examples` direction:
+- `trajectory_2D.jl` constructs an example 2D scene and samples trajectories in that scene
+- `trajectory_3D.jl` constructs an example 3D scene and samples trajectories in that scene

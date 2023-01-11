@@ -1,4 +1,5 @@
 ## Costs ##
+export obstacle_cost, smoothness_cost, trajectory_cost
 
 function obstacle_cost(p::AbstractVector, scene::Scene, d_safe::Real)
     sd = signed_dist(p, ignore_derivatives(scene))

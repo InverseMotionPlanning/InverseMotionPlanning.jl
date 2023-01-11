@@ -1,13 +1,25 @@
+name = "InverseTAMP"
+uuid = "323c12ae-4d69-4bba-88fc-807360fe8cd3"
+authors = ["Xuan <tanqazx@gmail.com> and contributors"]
+version = "0.1.0"
+
 [deps]
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 ConvexBodyProximityQueries = "e9983d58-8b29-5530-8046-db49618142f9"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 Gen = "ea4f424c-a589-11e8-07c0-fd5c91b9da4a"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MeshViz = "9ecf9c4f-6e5a-4b5e-83ae-06f2c7a661d8"
 Meshes = "eacbb407-ea5a-433e-ab97-5258b1ca43fa"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
-julia = "1.7"
 Gen = "0.4.5"
+julia = "1.7"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

@@ -1,4 +1,5 @@
 ## Geometric Utilities ##
+export min_dist, interior_dist, signed_dist, Scene
 
 # Implement CBPQ support functions for Meshes.jl types
 CBPQ.support(g::Geometry, dir::AbstractVector) =
@@ -105,6 +106,8 @@ function signed_dist(p::AbstractVector, g::Geometry)
 end
 signed_dist(p::Point, g::Geometry) =
     p in g ? -interior_dist(p, g) : min_dist(p, g)
+
+## Scene Datatype ##
 
 struct Scene{D, T} <: Meshes.Domain{D, T}
     obstacles::Vector{Geometry{D, T}}   

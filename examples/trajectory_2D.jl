@@ -1,25 +1,8 @@
-using StaticArrays
-using LinearAlgebra
-using ChainRulesCore
-using Meshes
-using Gen
+## Trajectory sampling example in 2D ##
 
-import ConvexBodyProximityQueries as CBPQ
-import Zygote: withgradient, hessian
-import Base: @kwdef
-
-import GLMakie:
-    GLMakie, Makie, Axis, Axis3, Figure, Observable, @lift,
-    plot!, scatter!, lines!, arrows!
-import MeshViz
-
-include("geometry.jl")
-include("costs.jl")
-include("gen_utils.jl")
-include("trajectory_gf.jl")
-include("inference.jl")
-
-## Example ##
+# Import libraries and dependencies
+using InverseTAMP, Gen, Meshes
+import GLMakie: GLMakie, Makie, Axis, Figure, Observable, @lift
 
 # Construct scene
 b1 = Box(Point(1,1), Point(2, 2))
@@ -37,20 +20,19 @@ alpha = 20.0
 
 args = (n_points, start, stop, scene, d_safe, obs_mult, alpha)
 
-# Generate initial trace
+# Generate initial trajectory trace
 tr, w = generate(boltzmann_trajectory_2D, args)
-get_score(tr)
 
 # Setup printing / plotting callbacks
-callback = Returns(nothing)
-callback = PrintCallback()
-callback = PlotCallback(sleep=0.001, show_gradients=false)
-callback = PrintPlotCallback(sleep=0.001, show_gradients=false)
+callback = Returns(nothing) # Empty callback
+callback = PrintCallback() # Printing callback
+callback = PlotCallback(sleep=0.001, show_gradients=false) # Plotting callback
+callback = PrintPlotCallback(sleep=0.001, show_gradients=false) # Combined callback
 
 # Run callback on initial trace
 callback(tr, true)
 
-# Run inference
+# Run MCMC samplers on trajectory trace
 tr = rwmh_sampler(tr, 100; callback, sigma=0.5, block_size=1)
 tr = mala_sampler(tr, 100; callback, tau=0.002)
 tr = hmc_sampler(tr, 100; callback, eps=0.01, L=20)
@@ -61,7 +43,9 @@ tr = nhmc_sampler(tr, 100; callback, nmc_steps=1, nmc_step_size=0.2,
                   hmc_steps=1, hmc_eps=0.005, hmc_L=10)
 
 ## Construct side-by-side comparison animation ##
+
 tr, w = generate(boltzmann_trajectory_2D, args)
+
 fig = Figure(resolution=(1800, 1200))
 iter = Observable(0)
 iter_string = @lift("Iteration: " * string($iter))
