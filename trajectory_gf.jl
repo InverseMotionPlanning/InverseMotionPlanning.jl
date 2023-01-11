@@ -1,5 +1,3 @@
-## Gen Interface Extensions ##
-
 ## Trajectory ChoiceMap ##
 
 struct TrajectoryChoiceMap{M <: AbstractMatrix, I} <: ChoiceMap
@@ -110,10 +108,17 @@ function _trajectory_score(trajectory::AbstractMatrix, scene::Scene,
     return -alpha * trajectory_cost(trajectory, scene, d_safe, obs_mult)
 end
 
-Gen.accepts_output_grad(gen_fn::BoltzmannTrajectoryGF) = false
 
 function Gen.simulate(gen_fn::BoltzmannTrajectoryGF, args::Tuple)
     error("Not implemented.")
+end
+
+function Gen.project(trace::TrajectoryTrace, selection::Selection)
+    error("Not implemented.")
+end
+
+function Gen.project(trace::TrajectoryTrace, selection::EmptySelection)
+    0.0
 end
 
 function Gen.generate(
@@ -129,7 +134,7 @@ function Gen.generate(
     mu, sigma = zeros(n_elements), ones(n_elements)
     delta = norm(stop .- start) / n_points - 1
     noise = broadcasted_normal(mu, sigma) .* delta/10
-    trajectory[:, 2:end-1] .+= reshape(noise, 2, :)
+    trajectory[:, 2:end-1] .+= reshape(noise, D, :)
     prop_weight = logpdf(broadcasted_normal, noise, mu, sigma)
     # Compute trajectory cost, score, and gradients
     score, grads = withgradient(_trajectory_score,
@@ -190,13 +195,32 @@ function Gen.update(
 end
 
 function Gen.choice_gradients(
-    trace::TrajectoryTrace{D}, selection::Selection, retgrad
+    trace::TrajectoryTrace{D}, selection::Selection, 
+    retgrad::Union{Nothing, AbstractMatrix}
 ) where {D}
-    # TODO handle retgrad
-    arg_grads = trace.arg_grads
+    # Add retgrad to existing trajectory gradients
+    trajectory_grads = trace.trajectory_grads
+    if !isnothing(retgrad)
+        trajectory_grads = copy(trajectory_grads) .+ retgrad
+    end
+    # Update gradient with respect to start and end points
+    arg_grads = values(trace.arg_grads)
+    if !isnothing(retgrad)
+        start_grad = trajectory_grads[:, 1]
+        stop_grad = trajectory_grads[:, end]
+        arg_grads = (nothing, start_grad, stop_grad, arg_grads[4:end]...)
+    end
+    # Restrict choices to selected addresses
     choice_values = get_selected(get_choices(trace), selection)
-    choice_grads = TrajectoryChoiceMap(view(trace.trajectory_grads, :,
-                                            2:trace.args.n_points-1))
+    # Restrict trajectory gradients to selected addresses
+    n_points = trace.args.n_points
+    choice_grads = TrajectoryChoiceMap(view(trajectory_grads, :, 2:n_points-1))
     choice_grads = get_selected(choice_grads, selection)
     return (arg_grads, choice_values, choice_grads)
 end
+
+Gen.has_argument_grads(gen_fn::BoltzmannTrajectoryGF) =
+    (false, true, true, false, true, true, true)
+
+Gen.accepts_output_grad(gen_fn::BoltzmannTrajectoryGF) =
+    true
