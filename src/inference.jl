@@ -53,10 +53,19 @@ end
 "Newtonian Monte Carlo (NMC) kernel over trajectory traces."
 function nmc(trace::TrajectoryTrace{D},
              selection = AllSelection(), step_size::Real=1.0) where {D}
-    if selection === EmptySelection() return trace end
+    # Convert selection to trajectory indices
+    if selection isa EmptySelection # Nothing is perturbed
+        return trace
+    elseif selection isa AllSelection
+        idxs = 1:trace.args.n_points-2
+    elseif selection isa HierarchicalSelection
+        idxs = sort!(collect(Int, keys(get_subselections(selection)))) .+ 1
+    else 
+        error("Unecognized selection type: $(typeof(selection))")
+    end
 
     # Extract values, gradients, and Hessian
-    values, g, H = _nmc_extract_values_grads_hessian(trace, selection)
+    values, g, H = _nmc_extract_values_grads_hessian(trace, idxs)
     # Compute Newton-Raphson step
     inv_H = inv(H)
     step = (inv_H * g) .* step_size
@@ -66,15 +75,17 @@ function nmc(trace::TrajectoryTrace{D},
     fwd_weight = logpdf(mvnormal, new_values, mu, -inv_H)
 
     # Construct updated trace from new values
-    if selection === AllSelection()
+    if selection isa AllSelection
         new_choices = TrajectoryChoiceMap(reshape(new_values, D, :))
-    else
-        error("Custom indices not supported yet.")
+    elseif selection isa HierarchicalSelection
+        new_trajectory = copy(trace.trajectory)
+        new_trajectory[:, idxs] = reshape(new_values, D, :)
+        new_choices = TrajectoryChoiceMap(new_trajectory, idxs)
     end
     new_trace, up_weight, _, _ = update(trace, new_choices)
 
     # Evaluate backward proposal probability
-    new_values, g, H = _nmc_extract_values_grads_hessian(trace, selection)
+    new_values, g, H = _nmc_extract_values_grads_hessian(trace, idxs)
     inv_H = inv(H)
     step = (inv_H * g) .* step_size
     mu = new_values .- step
@@ -90,19 +101,20 @@ function nmc(trace::TrajectoryTrace{D},
 end
 
 function _nmc_extract_values_grads_hessian(
-    trace::TrajectoryTrace{D}, selection
+    trace::TrajectoryTrace{D}, idxs
 ) where{D}
     # Compute Hessian of smoothness cost (obstacle cost ignored because linear)
     H = hessian(smoothness_cost, trace.trajectory)
     # Multiply by -alpha to get Hessian with respect to score
     H = H .* -trace.args.alpha
     # Restrict Hessian and gradients to selected addresses
-    if selection === AllSelection() # Ignore Hessian over endpoints, gradients
-        values = vec(trace.trajectory[:, 2:end-1])
-        g = vec(trace.trajectory_grads[:, 2:end-1])
-        H = H[D+1:end-D, D+1:end-D] # Remove first and last point
-    elseif selection isa HierarchicalSelection
-        error("Custom indices not supported yet.")
+    values = vec(trace.trajectory[:, idxs])
+    g = vec(trace.trajectory_grads[:, idxs])
+    if idxs == 1:length(trace.trajectory)-2
+        H = H[D+1:end-D, D+1:end-D]
+    else
+        h_idxs = reduce(vcat, (D*(i-1)+1:D*i for i in idxs))
+        H = H[h_idxs, h_idxs]
     end
     return (values, g, H)
 end
