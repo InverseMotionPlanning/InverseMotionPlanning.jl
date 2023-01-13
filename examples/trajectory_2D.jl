@@ -36,9 +36,9 @@ callback(tr, true)
 tr = rwmh_sampler(tr, 100; callback, sigma=0.5, block_size=1)
 tr = mala_sampler(tr, 100; callback, tau=0.002)
 tr = hmc_sampler(tr, 100; callback, eps=0.01, L=10)
-tr = nmc_sampler(tr, 100; callback, step_size=0.2, n_tries=5)
+tr = nmc_sampler(tr, 100; callback, step_size=0.05, n_tries=1)
 tr = nmc_mala_sampler(tr, 100; callback, mala_steps=5, mala_step_size=0.002, 
-                      nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
+                      nmc_tries=5, nmc_steps=1, nmc_step_size=0.5)
 tr = nhmc_sampler(tr, 100; callback, hmc_steps=1, hmc_eps=0.005, hmc_L=10,
                   nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
 

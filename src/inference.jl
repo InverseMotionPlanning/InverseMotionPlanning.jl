@@ -76,7 +76,7 @@ function nmc(
     step = (inv_H * g) .* step_size
     # Sample from multi-variate Gaussian centered at updated location
     mu = values .- step
-    cov = -inv_H
+    cov = -inv_H * (2 * step_size)
     new_values = mvnormal(mu, cov)
     fwd_weight = logpdf(mvnormal, new_values, mu, cov)
 
@@ -117,7 +117,7 @@ function nmc(
     inv_H = inv(H)
     step = (inv_H * g) .* step_size
     mu = new_values .- step
-    cov = -inv_H
+    cov = -inv_H .* (2 * step_size)
     bwd_weight = logpdf(mvnormal, values, mu, cov)
 
     # Perform accept-reject step
@@ -153,7 +153,7 @@ function nmc_multiple_try(
 
     # Draw multiple samples from NMC proposal distribution
     mu = values .- step
-    cov = -inv_H
+    cov = -inv_H * (2 * step_size)
     fwd_values = [mvnormal(mu, cov) for _ in 1:n_tries]
 
     # Compute importance weights for each proposed sample
@@ -162,7 +162,7 @@ function nmc_multiple_try(
         trajectory[:, idxs] = reshape(val, D, :)
         prop_score = logpdf(mvnormal, val, mu, cov)
         modeL_score = _trajectory_score(trajectory, trace.args)
-        return modeL_score - prop_score
+        return (modeL_score - prop_score)::Float64
     end
 
     # Choose one of the proposed samples
@@ -185,7 +185,7 @@ function nmc_multiple_try(
     inv_H = inv(H)
     step = (inv_H * g) .* step_size
     mu = new_values .- step
-    cov = -inv_H
+    cov = -inv_H * (2 * step_size)
     bwd_values = [mvnormal(mu, cov) for _ in 1:n_tries-1]
 
     # Compute importance weights for each reference sample
@@ -194,7 +194,7 @@ function nmc_multiple_try(
         trajectory[:, idxs] = reshape(val, D, :)
         prop_score = logpdf(mvnormal, val, mu, cov)
         modeL_score = _trajectory_score(trajectory, new_trace.args)
-        return modeL_score - prop_score
+        return (modeL_score - prop_score)::Float64
     end
     
     # Add original sample and importance weight
@@ -322,7 +322,7 @@ end
 function nmc_sampler(
     trace::Trace, n_iters::Int;
     selection::Selection=AllSelection(), step_size=1.0, n_tries=1,
-    gd_steps=5, gd_step_size=0.001, kwargs...
+    gd_steps=0, gd_step_size=0.001, kwargs...
 )
     nmc_kernel(trace) = nmc(trace, selection; step_size, gd_steps, gd_step_size)
     nmc_multi(trace) = nmc_multiple_try(trace, selection; step_size, n_tries)
