@@ -27,7 +27,7 @@ tr, w = generate(boltzmann_trajectory_2D, args)
 callback = Returns(nothing) # Empty callback
 callback = PrintCallback() # Printing callback
 callback = PlotCallback(sleep=0.001, show_gradients=false) # Plotting callback
-callback = PrintPlotCallback(sleep=0.001, show_gradients=false) # Combined callback
+callback = PrintPlotCallback(sleep=0.001, show_gradients=false, accepted=true) # Combined callback
 
 # Run callback on initial trace
 callback(tr, true)
@@ -35,12 +35,12 @@ callback(tr, true)
 # Run MCMC samplers on trajectory trace
 tr = rwmh_sampler(tr, 100; callback, sigma=0.5, block_size=1)
 tr = mala_sampler(tr, 100; callback, tau=0.002)
-tr = hmc_sampler(tr, 100; callback, eps=0.01, L=20)
-tr = nmc_sampler(tr, 100; callback, step_size=0.2)
-tr = nmc_mala_sampler(tr, 100; callback, nmc_steps=1, nmc_step_size=0.2,
-                      mala_steps=5, mala_step_size=0.002)
-tr = nhmc_sampler(tr, 100; callback, nmc_steps=1, nmc_step_size=0.2,
-                  hmc_steps=1, hmc_eps=0.005, hmc_L=10)
+tr = hmc_sampler(tr, 100; callback, eps=0.01, L=10)
+tr = nmc_sampler(tr, 100; callback, step_size=0.2, n_tries=5)
+tr = nmc_mala_sampler(tr, 100; callback, mala_steps=5, mala_step_size=0.002, 
+                      nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
+tr = nhmc_sampler(tr, 100; callback, hmc_steps=1, hmc_eps=0.005, hmc_L=10,
+                  nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
 
 ## Construct side-by-side comparison animation ##
 
@@ -65,7 +65,7 @@ axis = Axis(fig[1, 3], title="Hamiltonian Monte Carlo (HMC)", aspect=1, titleali
 hmc_callback = PlotCallback(sleep=0.0, show_gradients=false)
 init_plot!(hmc_callback, tr, axis)
 
-axis = Axis(fig[2, 1], title="Newtonian Monte Carlo (NMC)", aspect=1, titlealign=:left,
+axis = Axis(fig[2, 1], title="Newtonian Monte Carlo (NMC, Multiple Try)", aspect=1, titlealign=:left,
             titlesize=22, subtitle=iter_string, subtitlesize=20)
 nmc_callback = PlotCallback(sleep=0.0, show_gradients=false)
 init_plot!(nmc_callback, tr, axis)
@@ -88,12 +88,12 @@ Makie.record(fig, "mcmc_comparison.mp4", 1:n_iters, framerate=30) do t
     traces[1] = rwmh_sampler(traces[1], 1; callback=rwmh_callback, sigma=0.5, block_size=1)
     traces[2] = mala_sampler(traces[2], 1; callback=mala_callback, tau=0.002)
     traces[3] = hmc_sampler(traces[3], 1; callback=hmc_callback, eps=0.01, L=20)
-    traces[4] = nmc_sampler(traces[4], 1; callback=nmc_callback, step_size=0.2)
-    traces[5] = nmc_mala_sampler(traces[6], 1; callback=nmc_mala_callback,
-                            nmc_steps=1, nmc_step_size=0.2,
-                            mala_steps=5, mala_step_size=0.002)
+    traces[4] = nmc_sampler(traces[4], 1; callback=nmc_callback, step_size=0.2, n_tries=5)
+    traces[5] = nmc_mala_sampler(traces[5], 1; callback=nmc_mala_callback,
+                                 mala_steps=5, mala_step_size=0.002, 
+                                 nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
     traces[6] = nhmc_sampler(traces[6], 1; callback=nhmc_callback,
-                        nmc_steps=1, nmc_step_size=0.2,
-                        hmc_steps=1, hmc_eps=0.005, hmc_L=10)
+                             hmc_steps=1, hmc_eps=0.005, hmc_L=10,
+                             nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
     sleep(0.001)
 end

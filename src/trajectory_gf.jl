@@ -115,6 +115,12 @@ function _trajectory_score(trajectory::AbstractMatrix, scene::Scene,
     return -alpha * trajectory_cost(trajectory, scene, d_safe, obs_mult)
 end
 
+function _trajectory_score(trajectory::AbstractMatrix,
+                           args::BoltzmannTrajectoryArgs)
+    return _trajectory_score(trajectory, args.scene,
+                             args.d_safe, args.obs_mult, args.alpha)
+end
+
 function _trajectory_grads(trajectory::AbstractMatrix, scene::Scene,
                            d_safe::Real, obs_mult::Real, alpha::Real)
     f(t) = _trajectory_score(t, scene, d_safe, obs_mult, alpha)

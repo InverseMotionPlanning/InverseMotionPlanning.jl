@@ -36,12 +36,12 @@ callback(tr, true)
 # Run MCMC samplers on trajectory trace
 tr = rwmh_sampler(tr, 100; callback, sigma=0.5, block_size=1)
 tr = mala_sampler(tr, 100; callback, tau=0.002)
-tr = hmc_sampler(tr, 100; callback, eps=0.01, L=20)
-tr = nmc_sampler(tr, 100; callback, step_size=0.2)
-tr = nmc_mala_sampler(tr, 100; callback, nmc_steps=1, nmc_step_size=0.05,
-                      mala_steps=10, mala_step_size=0.002)
-tr = nhmc_sampler(tr, 100; callback, nmc_steps=1, nmc_step_size=0.1,
-                  hmc_steps=1, hmc_eps=0.01, hmc_L=20)
+tr = hmc_sampler(tr, 100; callback, eps=0.01, L=10)
+tr = nmc_sampler(tr, 100; callback, step_size=1.0, n_tries=10)
+tr = nmc_mala_sampler(tr, 100; callback, mala_steps=5, mala_step_size=0.002, 
+                      nmc_tries=10, nmc_steps=1, nmc_step_size=1.0)
+tr = nhmc_sampler(tr, 100; callback, hmc_steps=1, hmc_eps=0.005, hmc_L=10,
+                  nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
 
 ## Record animation of 3D trajectory sampling ##
  
@@ -53,10 +53,10 @@ callback = PlotCallback(sleep=0.001, show_gradients=false)
 init_plot!(callback, tr, axis)
 
 trace = Ref(tr) # Wrap trace in reference so it can be modified by record
-n_iters = 10
-Makie.record(fig, "mcmc_trajectory_sampling_3D_test.mp4", 1:n_iters, framerate=30) do t
+n_iters = 500
+Makie.record(fig, "mcmc_trajectory_sampling_3D.mp4", 1:n_iters, framerate=30) do t
     trace[] = nmc_mala_sampler(trace[], 1; callback,
-                               nmc_steps=1, nmc_step_size=0.2,
+                               nmc_tries=10, nmc_steps=1, nmc_step_size=1.0,
                                mala_steps=5, mala_step_size=0.002)
-    sleep(0.001)
+    sleep(0.0001)
 end

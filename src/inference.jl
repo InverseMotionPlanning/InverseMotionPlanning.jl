@@ -1,6 +1,6 @@
 # Export kernels
 export drift_kernel_block, drift_kernel_point, drift_kernel_trajectory
-export nmc, nmc_mala, nhmc
+export nmc, nmc_multiple_try, nmc_mala, nhmc
 # Export samplers
 export mcmc_sampler, rwmh_sampler, mala_sampler, hmc_sampler
 export nmc_sampler, nmc_mala_sampler, nhmc_sampler
@@ -55,7 +55,7 @@ function nmc(
     trace::TrajectoryTrace{D},
     selection = AllSelection();
     step_size::Real=0.1,
-    gd_steps::Int=5,
+    gd_steps::Int=0,
     gd_step_size::Real=0.001
 ) where {D}
     # Convert selection to trajectory indices
@@ -129,6 +129,88 @@ function nmc(
     end
 end
 
+"Multiple-try Newtonian Monte Carlo (NMC) kernel over trajectory traces."
+function nmc_multiple_try(
+    trace::TrajectoryTrace{D}, selection = AllSelection();
+    step_size::Real=0.1, n_tries::Int=5
+) where {D}
+    # Convert selection to trajectory indices
+    if selection isa EmptySelection # Nothing is perturbed
+        return trace
+    elseif selection isa AllSelection
+        idxs = 2:trace.args.n_points-1
+    elseif selection isa HierarchicalSelection
+        idxs = sort!(collect(Int, keys(get_subselections(selection)))) .+ 1
+    else 
+        error("Unecognized selection type: $(typeof(selection))")
+    end
+
+    # Extract values, gradients, and Hessian
+    values, g, H = _nmc_extract_values_grads_hessian(trace, idxs)
+    # Compute Newton-Raphson step
+    inv_H = inv(H)
+    step = (inv_H * g) .* step_size
+
+    # Draw multiple samples from NMC proposal distribution
+    mu = values .- step
+    cov = -inv_H
+    fwd_values = [mvnormal(mu, cov) for _ in 1:n_tries]
+
+    # Compute importance weights for each proposed sample
+    fwd_weights = map(fwd_values) do val
+        trajectory = copy(trace.trajectory)
+        trajectory[:, idxs] = reshape(val, D, :)
+        prop_score = logpdf(mvnormal, val, mu, cov)
+        modeL_score = _trajectory_score(trajectory, trace.args)
+        return modeL_score - prop_score
+    end
+
+    # Choose one of the proposed samples
+    fwd_total_weight = Gen.logsumexp(fwd_weights)
+    fwd_probs = exp.(fwd_weights .- fwd_total_weight)
+    new_values = fwd_values[categorical(fwd_probs)]
+
+    # Construct updated trace from new values
+    if selection isa AllSelection
+        new_choices = TrajectoryChoiceMap(reshape(new_values, D, :))
+    elseif selection isa HierarchicalSelection
+        new_trajectory = copy(trace.trajectory)
+        new_trajectory[:, idxs] = reshape(new_values, D, :)
+        new_choices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
+    end
+    new_trace, _, _, _ = update(trace, new_choices)
+
+    # Draw reference samples from backward proposal
+    new_values, g, H = _nmc_extract_values_grads_hessian(new_trace, idxs)
+    inv_H = inv(H)
+    step = (inv_H * g) .* step_size
+    mu = new_values .- step
+    cov = -inv_H
+    bwd_values = [mvnormal(mu, cov) for _ in 1:n_tries-1]
+
+    # Compute importance weights for each reference sample
+    bwd_weights = map(bwd_values) do val
+        trajectory = copy(new_trace.trajectory)
+        trajectory[:, idxs] = reshape(val, D, :)
+        prop_score = logpdf(mvnormal, val, mu, cov)
+        modeL_score = _trajectory_score(trajectory, new_trace.args)
+        return modeL_score - prop_score
+    end
+    
+    # Add original sample and importance weight
+    push!(bwd_values, values)
+    push!(bwd_weights, trace.score - logpdf(mvnormal, values, mu, cov))
+
+    # Compute weight ratio and then accept / reject
+    bwd_total_weight = Gen.logsumexp(bwd_weights)
+    alpha = fwd_total_weight - bwd_total_weight
+    if log(rand()) < alpha
+        return (new_trace, true)
+    else
+        return (trace, false)
+    end
+end
+
 function _nmc_extract_values_grads_hessian(
     trace::TrajectoryTrace{D}, idxs
 ) where{D}
@@ -150,13 +232,16 @@ end
 
 # Hybrid NMC + MALA kernel
 @pkern function nmc_mala(
-    trace, selection = AllSelection(), nmc_steps::Int=1, mala_steps::Int=1;
-    nmc_step_size=1.0, mala_step_size=0.002, 
+    trace, selection = AllSelection(),
+    nmc_steps::Int=1, mala_steps::Int=1;
+    nmc_tries=1, nmc_step_size=1.0, mala_step_size=0.002, 
     check=false, observations = EmptyChoiceMap()
 )
     init_trace = trace
     for t in 1:nmc_steps
-        trace, _ = nmc(trace, selection, nmc_step_size)
+        trace, _ = nmc_tries == 1 ?
+            nmc(trace, selection; step_size=nmc_step_size) :
+            nmc_multiple_try(trace, selection; step_size=nmc_step_size)
     end
     for t in 1:mala_steps
         trace, _ = mala(trace, selection, mala_step_size)
@@ -168,12 +253,14 @@ end
 # Hybrid NMC + HMC kernel
 @pkern function nhmc(
     trace, selection = AllSelection(), nmc_steps::Int=1, hmc_steps::Int=1;
-    nmc_step_size=1.0, hmc_eps=0.01, hmc_L=20, 
+    nmc_tries=1, nmc_step_size=1.0, hmc_eps=0.01, hmc_L=20, 
     check=false, observations = EmptyChoiceMap()
 )
     init_trace = trace
     for t in 1:nmc_steps
-        trace, _ = nmc(trace, selection, nmc_step_size)
+        trace, _ = nmc_tries == 1 ?
+            nmc(trace, selection; step_size=nmc_step_size) :
+            nmc_multiple_try(trace, selection; step_size=nmc_step_size)
     end
     for t in 1:hmc_steps
         trace, _ = hmc(trace, selection; eps=hmc_eps, L=hmc_L)
@@ -234,22 +321,27 @@ end
 "NMC-based sampler."
 function nmc_sampler(
     trace::Trace, n_iters::Int;
-    selection::Selection=AllSelection(), step_size=1.0,
+    selection::Selection=AllSelection(), step_size=1.0, n_tries=1,
     gd_steps=5, gd_step_size=0.001, kwargs...
 )
     nmc_kernel(trace) = nmc(trace, selection; step_size, gd_steps, gd_step_size)
-    return mcmc_sampler(trace, n_iters, nmc_kernel; kwargs...)
+    nmc_multi(trace) = nmc_multiple_try(trace, selection; step_size, n_tries)
+    if n_tries == 1
+        return mcmc_sampler(trace, n_iters, nmc_kernel; kwargs...)
+    else
+        return mcmc_sampler(trace, n_iters, nmc_multi; kwargs...)
+    end
 end
 
 "NMC-MALA hybrid sampler."
 function nmc_mala_sampler(
     trace::Trace, n_iters::Int;
     selection::Selection=AllSelection(),
-    nmc_steps::Int=1, mala_steps::Int=1,
+    nmc_steps::Int=1, mala_steps::Int=1, nmc_tries::Int=1,
     nmc_step_size=0.2, mala_step_size=0.002, kwargs...
 )
     nmc_mala_kernel(trace) = nmc_mala(trace, selection, nmc_steps, mala_steps;
-                                      nmc_step_size, mala_step_size)
+                                      nmc_tries, nmc_step_size, mala_step_size)
     return mcmc_sampler(trace, n_iters, nmc_mala_kernel; kwargs...)
 end
 
@@ -257,10 +349,10 @@ end
 function nhmc_sampler(
     trace::Trace, n_iters::Int;
     selection::Selection=AllSelection(),
-    nmc_steps::Int=1, hmc_steps::Int=1,
+    nmc_steps::Int=1, hmc_steps::Int=1, nmc_tries::Int=1,
     nmc_step_size=1.0, hmc_eps=0.01, hmc_L=20, kwargs...
 )
     nhmc_kernel(trace) = nhmc(trace, selection, nmc_steps, hmc_steps;
-                              nmc_step_size, hmc_eps, hmc_L)
+                              nmc_tries, nmc_step_size, hmc_eps, hmc_L)
     return mcmc_sampler(trace, n_iters, nhmc_kernel; kwargs...)
 end
