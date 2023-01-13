@@ -101,6 +101,8 @@ Gen.get_score(trace::TrajectoryTrace) =
 Gen.get_choices(trace::TrajectoryTrace) =
     TrajectoryChoiceMap(view(trace.trajectory, :, 2:trace.args.n_points-1))
 
+Meshes.embeddim(::TrajectoryTrace{D}) where {D} = D
+
 ## Trajectory GF ##
 
 struct BoltzmannTrajectoryGF{D} <: GenerativeFunction{Matrix{Float64}, TrajectoryTrace{D}} end
@@ -113,6 +115,21 @@ function _trajectory_score(trajectory::AbstractMatrix, scene::Scene,
     return -alpha * trajectory_cost(trajectory, scene, d_safe, obs_mult)
 end
 
+function _trajectory_grads(trajectory::AbstractMatrix, scene::Scene,
+                           d_safe::Real, obs_mult::Real, alpha::Real)
+    f(t) = _trajectory_score(t, scene, d_safe, obs_mult, alpha)
+    return Zygote.gradient(f, trajectory)[1]
+end
+
+function _trajectory_grads(trajectory::AbstractMatrix,
+                           args::BoltzmannTrajectoryArgs)
+    return _trajectory_grads(trajectory, args.scene,
+                             args.d_safe, args.obs_mult, args.alpha)
+end
+
+function _trajectory_grads(trace::TrajectoryTrace)
+    return _trajectory_grads(trace.trajectory, trace.args)
+end
 
 function Gen.simulate(gen_fn::BoltzmannTrajectoryGF, args::Tuple)
     error("Not implemented.")

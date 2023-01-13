@@ -7,7 +7,7 @@ using Meshes
 using Gen
 
 import ConvexBodyProximityQueries as CBPQ
-import Zygote: withgradient, hessian
+import Zygote: Zygote, withgradient, hessian
 import Base: @kwdef
 
 import GLMakie:

@@ -51,13 +51,18 @@ end
 end
 
 "Newtonian Monte Carlo (NMC) kernel over trajectory traces."
-function nmc(trace::TrajectoryTrace{D},
-             selection = AllSelection(), step_size::Real=1.0) where {D}
+function nmc(
+    trace::TrajectoryTrace{D},
+    selection = AllSelection();
+    step_size::Real=0.1,
+    gd_steps::Int=5,
+    gd_step_size::Real=0.001
+) where {D}
     # Convert selection to trajectory indices
     if selection isa EmptySelection # Nothing is perturbed
         return trace
     elseif selection isa AllSelection
-        idxs = 1:trace.args.n_points-2
+        idxs = 2:trace.args.n_points-1
     elseif selection isa HierarchicalSelection
         idxs = sort!(collect(Int, keys(get_subselections(selection)))) .+ 1
     else 
@@ -71,8 +76,21 @@ function nmc(trace::TrajectoryTrace{D},
     step = (inv_H * g) .* step_size
     # Sample from multi-variate Gaussian centered at updated location
     mu = values .- step
-    new_values = mvnormal(mu, -inv_H)
-    fwd_weight = logpdf(mvnormal, new_values, mu, -inv_H)
+    cov = -inv_H
+    new_values = mvnormal(mu, cov)
+    fwd_weight = logpdf(mvnormal, new_values, mu, cov)
+
+    # Take several gradient steps from new values
+    if gd_steps > 0
+        args = trace.args
+        new_trajectory = copy(trace.trajectory)
+        new_trajectory[:, idxs] = reshape(new_values, D, :)
+        for _ in 1:gd_step_size
+            g = _trajectory_grads(new_trajectory, args)[:, idxs]
+            new_trajectory[:, idxs] .+= gd_step_size .* g
+        end
+        new_values = vec(new_trajectory[:, idxs])
+    end
 
     # Construct updated trace from new values
     if selection isa AllSelection
@@ -80,16 +98,27 @@ function nmc(trace::TrajectoryTrace{D},
     elseif selection isa HierarchicalSelection
         new_trajectory = copy(trace.trajectory)
         new_trajectory[:, idxs] = reshape(new_values, D, :)
-        new_choices = TrajectoryChoiceMap(new_trajectory, idxs)
+        new_choices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
     end
     new_trace, up_weight, _, _ = update(trace, new_choices)
 
+    # Take several reverse gradient steps from original values
+    if gd_steps > 0
+        trajectory = copy(trace.trajectory)
+        for _ in 1:gd_steps
+            g = _trajectory_grads(trajectory, args)[:, idxs]
+            trajectory[:, idxs] .-= gd_step_size .* g
+        end
+        values = vec(trajectory[:, idxs])
+    end
+
     # Evaluate backward proposal probability
-    new_values, g, H = _nmc_extract_values_grads_hessian(trace, idxs)
+    new_values, g, H = _nmc_extract_values_grads_hessian(new_trace, idxs)
     inv_H = inv(H)
     step = (inv_H * g) .* step_size
     mu = new_values .- step
-    bwd_weight = logpdf(mvnormal, values, mu, -inv_H)
+    cov = -inv_H
+    bwd_weight = logpdf(mvnormal, values, mu, cov)
 
     # Perform accept-reject step
     alpha = up_weight - fwd_weight + bwd_weight
@@ -110,7 +139,7 @@ function _nmc_extract_values_grads_hessian(
     # Restrict Hessian and gradients to selected addresses
     values = vec(trace.trajectory[:, idxs])
     g = vec(trace.trajectory_grads[:, idxs])
-    if idxs == 1:length(trace.trajectory)-2
+    if idxs == 2:length(trace.trajectory)-1
         H = H[D+1:end-D, D+1:end-D]
     else
         h_idxs = reduce(vcat, (D*(i-1)+1:D*i for i in idxs))
@@ -205,9 +234,10 @@ end
 "NMC-based sampler."
 function nmc_sampler(
     trace::Trace, n_iters::Int;
-    selection::Selection=AllSelection(), step_size=1.0, kwargs...
+    selection::Selection=AllSelection(), step_size=1.0,
+    gd_steps=5, gd_step_size=0.001, kwargs...
 )
-    nmc_kernel(trace) = nmc(trace, selection, step_size)
+    nmc_kernel(trace) = nmc(trace, selection; step_size, gd_steps, gd_step_size)
     return mcmc_sampler(trace, n_iters, nmc_kernel; kwargs...)
 end
 
