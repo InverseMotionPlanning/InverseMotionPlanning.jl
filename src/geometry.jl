@@ -1,5 +1,5 @@
 ## Geometric Utilities ##
-export min_dist, interior_dist, signed_dist, Scene
+export min_dist, interior_dist, signed_dist, extended_bbox, Scene
 
 # Implement CBPQ support functions for Meshes.jl types
 CBPQ.support(g::Geometry, dir::AbstractVector) =
@@ -107,6 +107,21 @@ end
 signed_dist(p::Point, g::Geometry) =
     p in g ? -interior_dist(p, g) : min_dist(p, g)
 
+function signed_dist(p, gs::AbstractVector{<:Geometry})
+    if isempty(gs)
+        return Inf
+    else
+        dists = map(g -> signed_dist(p, g)::Float64, ignore_derivatives(gs))
+        return minimum(dists)
+    end
+end
+    
+function extended_bbox(g::Geometry{D}, d_safe::Real) where {D}
+    box = boundingbox(g)
+    offset = Vec(ntuple(Returns(d_safe), Val(D)))
+    return Box(box.min - offset, box.max + offset)
+end
+
 ## Scene Datatype ##
 
 struct Scene{D, T} <: Meshes.Domain{D, T}
@@ -123,4 +138,11 @@ Base.eltype(scene::Scene) = eltype(scene.obstacles)
 function signed_dist(p, scene::Scene)
     dists = map(obs -> signed_dist(p, obs), ignore_derivatives(scene.obstacles))
     return minimum(dists)
+end
+
+function possible_collisions(p, scene::Scene{D, T}, d_safe::Real) where {D, T}
+    obstacles = filter(scene.obstacles) do obs
+        return @ignore_derivatives Point(p) in extended_bbox(obs, d_safe)        
+    end::Vector{Geometry{D, T}}
+    return obstacles
 end

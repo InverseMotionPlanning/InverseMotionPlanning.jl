@@ -2,13 +2,14 @@
 export obstacle_cost, smoothness_cost, trajectory_cost
 
 function obstacle_cost(p::AbstractVector, scene::Scene, d_safe::Real)
-    sd = signed_dist(p, ignore_derivatives(scene))
+    obstacles = @ignore_derivatives possible_collisions(p, scene, d_safe)
+    sd = signed_dist(p, ignore_derivatives(obstacles))::Float64
     return max(d_safe-sd, 0.0)
 end
 
 function obstacle_cost(trajectory::AbstractMatrix, scene::Scene, d_safe::Real)
     costs = map(eachcol(trajectory)) do p
-        obstacle_cost(p, scene, d_safe)
+        obstacle_cost(p, scene, d_safe)::Float64
     end
     return sum(costs)
 end
