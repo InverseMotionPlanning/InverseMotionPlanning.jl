@@ -51,15 +51,14 @@ end
 end
 
 """
-    new_trace, accept = nmc(trace, selection; step_size = 0.1)
+    new_trace, weight = nmc(trace, selection; step_size = 0.1)
 
-Newtonian Monte Carlo (NMC) kernel over [`TrajectoryTrace`]s or hierarchical
-traces that contain [`TrajectoryTrace`] subtraces.
+Reweighting Newtonian Monte Carlo (NMC) kernel over [`TrajectoryTrace`]s or
+hierarchical traces that contain [`TrajectoryTrace`] subtraces. Returns
+the new trace and incremental importance weight.
 """
-function nmc(
-    trace::Trace, selection = AllSelection();
-    step_size::Real=0.1
-)
+function nmc_reweight(trace::Trace, selection = AllSelection();
+                      step_size::Real=0.1)
     # Sample proposals for each trajectory subtrace
     fwd_weight = 0.0
     new_choices = choicemap()
@@ -114,8 +113,21 @@ function nmc(
         bwd_weight += logpdf(mvnormal, prev_values, mu, cov)
     end
 
-    # Perform accept-reject step
-    alpha = up_weight - fwd_weight + bwd_weight
+    # Compute incremental importance weight and return
+    weight = up_weight - fwd_weight + bwd_weight
+    return trace, weight
+end
+
+"""
+    new_trace, accept = nmc(trace, selection; step_size = 0.1)
+
+Newtonian Monte Carlo (NMC) Metropolis-Hastings kernel over [`TrajectoryTrace`]s
+or hierarchical traces that contain [`TrajectoryTrace`] subtraces.
+"""
+function nmc(trace::Trace, selection = AllSelection(); kwargs...)
+    # Compute new trace and acceptance ratio
+    new_trace, alpha = nmc_reweight(trace, selection; kwargs...)
+    # Accept or reject
     if log(rand()) < alpha
         return (new_trace, true)
     else
