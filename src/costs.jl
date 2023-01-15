@@ -24,6 +24,22 @@ function smoothness_cost(trajectory::AbstractMatrix)
     return 0.5 * cost
 end
 
+# Custom Hessian for smoothness cost
+function Zygote.hessian(::typeof(smoothness_cost), trajectory::AbstractMatrix)
+    n_elems = length(trajectory)
+    D = size(trajectory, 1) # Dimensionality of each point
+    # Construct diagonal elements
+    diagonal = ones(n_elems)
+    diagonal[D+1:end-D] .*= 2.0
+    # Construct sup/super-diagonal elements
+    offdiagonal = -ones(n_elems - D)
+    # Construct matrix
+    H = diagm(diagonal)
+    H[diagind(H, 2)] = offdiagonal
+    H[diagind(H, -2)] = offdiagonal
+    return H
+end
+
 function trajectory_cost(trajectory::AbstractMatrix, scene::Scene,
                          d_safe::Real=0.1, obs_mult::Real=1.0)
     return (obs_mult * obstacle_cost(trajectory, scene, d_safe) +
