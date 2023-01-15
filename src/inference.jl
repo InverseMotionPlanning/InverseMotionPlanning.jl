@@ -50,61 +50,17 @@ end
     end
 end
 
-"Newtonian Monte Carlo (NMC) kernel over trajectory traces."
-function nmc(
-    trace::TrajectoryTrace{D}, selection = AllSelection();
-    step_size::Real=0.1
-) where {D}
-    # Convert selection to trajectory indices
-    if selection isa EmptySelection # Nothing is perturbed
-        return trace
-    end
-    idxs = selected_idxs(trace, selection)
+"""
+    new_trace, accept = nmc(trace, selection; step_size = 0.1)
 
-    # Extract values, gradients, and Hessian
-    values, g, H = _nmc_extract_values_grads_hessian(trace, idxs)
-    # Compute Newton-Raphson step
-    inv_H = inv(H)
-    step = (inv_H * g) .* step_size
-    # Sample from multi-variate Gaussian centered at updated location
-    mu = values .- step
-    cov = -inv_H * (2 * step_size)
-    new_values = mvnormal(mu, cov)
-    fwd_weight = logpdf(mvnormal, new_values, mu, cov)
-
-    # Construct updated trace from new values
-    if selection isa AllSelection
-        new_choices = TrajectoryChoiceMap(reshape(new_values, D, :))
-    elseif selection isa HierarchicalSelection
-        new_trajectory = trace.trajectory[:, 2:end-1]
-        new_trajectory[:, idxs.-1] = reshape(new_values, D, :)
-        new_choices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
-    end
-    new_trace, up_weight, _, _ = update(trace, new_choices)
-
-    # Evaluate backward proposal probability
-    new_values, g, H = _nmc_extract_values_grads_hessian(new_trace, idxs)
-    inv_H = inv(H)
-    step = (inv_H * g) .* step_size
-    mu = new_values .- step
-    cov = -inv_H * (2 * step_size)
-    bwd_weight = logpdf(mvnormal, values, mu, cov)
-
-    # Perform accept-reject step
-    alpha = up_weight - fwd_weight + bwd_weight
-    if log(rand()) < alpha
-        return (new_trace, true)
-    else
-        return (trace, false)
-    end
-end
-
-"Newtonian Monte Carlo (NMC) kernel over hierarchical traces."
+Newtonian Monte Carlo (NMC) kernel over [`TrajectoryTrace`]s or hierarchical
+traces that contain [`TrajectoryTrace`] subtraces.
+"""
 function nmc(
     trace::Trace, selection = AllSelection();
     step_size::Real=0.1
 )
-    # Sample proposals for each trajectory subtraces
+    # Sample proposals for each trajectory subtrace
     fwd_weight = 0.0
     new_choices = choicemap()
     subtrace_iter = subtrace_selections(trace, selection, TrajectoryTrace)
