@@ -35,7 +35,7 @@ Gen.get_selected(choices::TrajectoryChoiceMap, ::AllSelection) =
     choices
 Gen.get_selected(choices::TrajectoryChoiceMap, ::EmptySelection) =
     EmptyChoiceMap()
-
+    
 Base.isempty(choices::TrajectoryChoiceMap) =
     isempty(choices.idxs)
 
@@ -102,6 +102,16 @@ Gen.get_choices(trace::TrajectoryTrace) =
     TrajectoryChoiceMap(view(trace.trajectory, :, 2:trace.args.n_points-1))
 
 Meshes.embeddim(::TrajectoryTrace{D}) where {D} = D
+
+function selected_idxs(trace::TrajectoryTrace, selection::HierarchicalSelection)
+    idxs = sort!(collect(Int, keys(get_subselections(selection)))) .+ 1
+    intersect!(sort!(idxs), axes(trace.trajectory, 2))
+    return idxs
+end
+selected_idxs(trace::TrajectoryTrace, ::AllSelection) =
+    2:trace.args.n_points-1
+selected_idxs(trace::TrajectoryTrace, ::EmptySelection) =
+    Int[]
 
 ## Trajectory GF ##
 
@@ -218,7 +228,8 @@ function Gen.update(
     weight = new_trace.score - trace.score
     deleted_idxs = n_points:(trace.args.n_points-1)
     discarded_idxs = append!(updated_idxs, deleted_idxs)
-    discard = TrajectoryChoiceMap(trace.trajectory, discarded_idxs)
+    internal_points = view(trace.trajectory, :, 2:n_points-1)
+    discard = TrajectoryChoiceMap(internal_points, discarded_idxs)
     return new_trace, weight, UnknownChange(), discard
 end
 

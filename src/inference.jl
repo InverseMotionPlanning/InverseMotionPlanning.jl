@@ -58,13 +58,8 @@ function nmc(
     # Convert selection to trajectory indices
     if selection isa EmptySelection # Nothing is perturbed
         return trace
-    elseif selection isa AllSelection
-        idxs = 2:trace.args.n_points-1
-    elseif selection isa HierarchicalSelection
-        idxs = sort!(collect(Int, keys(get_subselections(selection)))) .+ 1
-    else 
-        error("Unecognized selection type: $(typeof(selection))")
     end
+    idxs = selected_idxs(trace, selection)
 
     # Extract values, gradients, and Hessian
     values, g, H = _nmc_extract_values_grads_hessian(trace, idxs)
@@ -81,8 +76,8 @@ function nmc(
     if selection isa AllSelection
         new_choices = TrajectoryChoiceMap(reshape(new_values, D, :))
     elseif selection isa HierarchicalSelection
-        new_trajectory = copy(trace.trajectory)
-        new_trajectory[:, idxs] = reshape(new_values, D, :)
+        new_trajectory = trace.trajectory[:, 2:end-1]
+        new_trajectory[:, idxs.-1] = reshape(new_values, D, :)
         new_choices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
     end
     new_trace, up_weight, _, _ = update(trace, new_choices)
@@ -104,6 +99,74 @@ function nmc(
     end
 end
 
+"Newtonian Monte Carlo (NMC) kernel over hierarchical traces."
+function nmc(
+    trace::Trace, selection = AllSelection();
+    step_size::Real=0.1
+)
+    # Sample proposals for each trajectory subtraces
+    fwd_weight = 0.0
+    new_choices = choicemap()
+    subtrace_iter = subtrace_selections(trace, selection, TrajectoryTrace)
+    for (addr, subtr, subsel) in subtrace_iter
+        # Convert sub-selection to trajectory indices
+        idxs = selected_idxs(subtr, subsel)
+
+        # Extract values, gradients, and Hessian
+        values, g, H = _nmc_extract_values_grads_hessian(subtr, idxs)
+        # Compute Newton-Raphson step
+        inv_H = inv(H)
+        step = (inv_H * g) .* step_size
+        # Sample from multi-variate Gaussian centered at updated location
+        mu = values .- step
+        cov = -inv_H * (2 * step_size)
+        new_values = mvnormal(mu, cov)
+        fwd_weight += logpdf(mvnormal, new_values, mu, cov)
+
+        # Fill choicemap with new values
+        D = embeddim(subtr)
+        if subsel isa AllSelection
+            subchoices = TrajectoryChoiceMap(reshape(new_values, D, :))
+        elseif subsel isa HierarchicalSelection
+            new_trajectory = subtr.trajectory[:, 2:end-1]
+            new_trajectory[:, idxs.-1] = reshape(new_values, D, :)
+            subchoices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
+        end
+        set_submap!(new_choices, addr, subchoices)
+    end
+
+    # Update trace with new choices
+    new_trace, up_weight, _, _ = update(trace, new_choices)
+
+    # Evaluate backward proposal probabilities for each trajectory subtrace
+    bwd_weight = 0.0
+    subtrace_iter = subtrace_selections(new_trace, selection, TrajectoryTrace)
+    for (addr, subtr, subsel) in subtrace_iter
+        # Convert sub-selection to trajectory indices
+        idxs = selected_idxs(subtr, subsel)
+
+        # Get previous corresponding trajectory subtrace and values
+        prev_tr = get_subtrace(trace, addr)
+        prev_values = vec(prev_tr.trajectory[:, idxs])
+
+        # Evaluate backward proposal probability
+        new_values, g, H = _nmc_extract_values_grads_hessian(subtr, idxs)
+        inv_H = inv(H)
+        step = (inv_H * g) .* step_size
+        mu = new_values .- step
+        cov = -inv_H * (2 * step_size)
+        bwd_weight += logpdf(mvnormal, prev_values, mu, cov)
+    end
+
+    # Perform accept-reject step
+    alpha = up_weight - fwd_weight + bwd_weight
+    if log(rand()) < alpha
+        return (new_trace, true)
+    else
+        return (trace, false)
+    end
+end
+
 "Multiple-try Newtonian Monte Carlo (NMC) kernel over trajectory traces."
 function nmc_multiple_try(
     trace::TrajectoryTrace{D}, selection = AllSelection();
@@ -112,13 +175,8 @@ function nmc_multiple_try(
     # Convert selection to trajectory indices
     if selection isa EmptySelection # Nothing is perturbed
         return trace
-    elseif selection isa AllSelection
-        idxs = 2:trace.args.n_points-1
-    elseif selection isa HierarchicalSelection
-        idxs = sort!(collect(Int, keys(get_subselections(selection)))) .+ 1
-    else 
-        error("Unecognized selection type: $(typeof(selection))")
     end
+    idxs = selected_idxs(trace, selection)
 
     # Extract values, gradients, and Hessian
     values, g, H = _nmc_extract_values_grads_hessian(trace, idxs)
@@ -149,8 +207,8 @@ function nmc_multiple_try(
     if selection isa AllSelection
         new_choices = TrajectoryChoiceMap(reshape(new_values, D, :))
     elseif selection isa HierarchicalSelection
-        new_trajectory = copy(trace.trajectory)
-        new_trajectory[:, idxs] = reshape(new_values, D, :)
+        new_trajectory = trace.trajectory[:, 2:end-1]
+        new_trajectory[:, idxs.-1] = reshape(new_values, D, :)
         new_choices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
     end
     new_trace, _, _, _ = update(trace, new_choices)

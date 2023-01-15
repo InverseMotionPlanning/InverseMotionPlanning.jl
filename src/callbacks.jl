@@ -71,34 +71,30 @@ function (cb::PlotCallback)(trace, metadata)
         init_plot!(cb, trace)
         return nothing
     end
-    # Get trajectory subtrace if address is specified
-    if !isnothing(get(cb.options, :trajectory_addr, nothing))
-        trace = get_subtrace(trace, cb.options[:trajectory_addr])
-    end
-    # Extract objects from trace
-    trajectory = trace.trajectory
-    gradients = trace.trajectory_grads
-    # Update observables then sleep
-    if cb.options[:show_trajectory]
-        cb.observables[:trajectory][] = trajectory
-        if cb.options[:show_gradients]
-            cb.observables[:gradients][] = gradients
+    # Iterate over trajectory subtraces
+    subtrace_iter = subtrace_selections(trace, selectall(), TrajectoryTrace)
+    for (addr, tr, _) in subtrace_iter
+        # Extract objects from trace
+        trajectory = tr.trajectory
+        gradients = tr.trajectory_grads
+        # Update observables
+        if cb.options[:show_trajectory]
+            cb.observables[Symbol(addr, " => trajectory")][] = trajectory
+            if cb.options[:show_gradients]
+                cb.observables[Symbol(addr, " => gradients")][] = gradients
+            end
         end
     end
+    # Sleep for the specified time
     if cb.options[:sleep] > 0
         sleep(cb.options[:sleep])
     end
 end
 
 function init_plot!(cb::PlotCallback, trace, axis = nothing)
-    # Get trajectory subtrace if address is specified
-    if !isnothing(get(cb.options, :trajectory_addr, nothing))
-        trace = get_subtrace(trace, cb.options[:trajectory_addr])
-    end
-    # Extract objects from trace
-    scene = trace.args.scene
-    trajectory = trace.trajectory
-    gradients = trace.trajectory_grads
+    # Extract scene from trace
+    trace_args = get_args(trace)
+    scene = trace_args[findfirst(a -> a isa Scene, trace_args)]
     dims = paramdim(scene)
     # Construct figure, axis if non-existent
     if isnothing(axis)
@@ -120,26 +116,35 @@ function init_plot!(cb::PlotCallback, trace, axis = nothing)
         cb.observables[:scene] = scene_obs 
     end
     if cb.options[:show_trajectory]
-        trajectory_obs = Observable(trajectory)
-        color = cb.options[:trajectory_color]
-        scatter!(cb.axis, trajectory_obs, color=color)
-        lines!(cb.axis, trajectory_obs, color=color)
-        cb.observables[:trajectory] = trajectory_obs 
-        if cb.options[:show_gradients]
-            gradients_obs = Observable(gradients)
-            cb.observables[:gradients] = gradients_obs
-            scale = cb.options[:gradient_scale] 
-            color = cb.options[:gradient_color]
-            x = @lift($trajectory_obs[1, :])
-            y = @lift($trajectory_obs[2, :])
-            u = @lift($gradients_obs[1, :] .* scale)
-            v = @lift($gradients_obs[2, :] .* scale)
-            if dims == 2
-                arrows!(cb.axis, x, y, u, v, color=color)
-            elseif dims == 3
-                z = @lift($trajectory_obs[3, :])
-                w = @lift($gradients_obs[3, :] .* scale)
-                arrows!(cb.axis, x, y, z, u, v, w, color=color)
+        # Iterate over trajectory subtraces
+        subtrace_iter = subtrace_selections(trace, selectall(), TrajectoryTrace)
+        for (addr, tr, _) in subtrace_iter
+            # Extract objects from trace
+            trajectory = tr.trajectory
+            gradients = tr.trajectory_grads
+            # Plot trajectory
+            trajectory_obs = Observable(trajectory)
+            cb.observables[Symbol(addr, " => trajectory")] = trajectory_obs 
+            color = cb.options[:trajectory_color]
+            scatter!(cb.axis, trajectory_obs, color=color)
+            lines!(cb.axis, trajectory_obs, color=color)
+            # Plot gradients
+            if cb.options[:show_gradients]
+                gradients_obs = Observable(gradients)
+                cb.observables[Symbol(addr, " => gradients")] = gradients_obs
+                scale = cb.options[:gradient_scale] 
+                color = cb.options[:gradient_color]
+                x = @lift($trajectory_obs[1, :])
+                y = @lift($trajectory_obs[2, :])
+                u = @lift($gradients_obs[1, :] .* scale)
+                v = @lift($gradients_obs[2, :] .* scale)
+                if dims == 2
+                    arrows!(cb.axis, x, y, u, v, color=color)
+                elseif dims == 3
+                    z = @lift($trajectory_obs[3, :])
+                    w = @lift($gradients_obs[3, :] .* scale)
+                    arrows!(cb.axis, x, y, z, u, v, w, color=color)
+                end
             end
         end
     end
