@@ -267,12 +267,28 @@ Gen.accepts_output_grad(gen_fn::BoltzmannTrajectoryGF) =
 
 ## Trajectory Sampling and Optimization ##
 
+"""
+    trace = sample_trajectory(n_dims::Int, args::Tuple; kwargs...)
+
+Samples an approximately optimal trajectory by performing a combination of 
+MCMC and gradient descent on traces drawn from a `BoltzmannTrajectoryGF`.
+`n_dims` is the number of dimensions of each trajectory point, and `args`
+are the arguments to a `BoltzmannTrajectoryGF`.
+
+# Keyword Arguments
+- `n_replicates::Int = 20`: Number of MCMC replicates / chains.
+- `n_mcmc_iters::Int = 10`: Number of MCMC iterations.
+- `n_optim_iters::Int = 10`: Number of gradient descent iterations.
+- `return_best::Bool = false`: Flag to return best trace instead of sampling.
+- `verbose::Bool = false`: Flag to print more information.
+"""
 function sample_trajectory(
     n_dims::Int, args::Tuple;
     n_replicates::Int = 20,
     n_mcmc_iters::Int = 10,
     n_optim_iters::Int = 10,
-    verbose=false
+    return_best::Bool = false,
+    verbose::Bool=false
 )
     # Generate initial trajectory traces
     if verbose
@@ -306,14 +322,18 @@ function sample_trajectory(
             traces[i] = map_optimize(traces[i], AllSelection())
         end
     end
-    # Sample a trace according to its score (unnormalized log probability)
-    if verbose
-        println("Sampling trajectory from replicates...")
+    # Sample or select best trace
+    if return_best
+        if verbose
+            println("Selecting best trajectory among replicates...")
+        end
+        trace = argmax(get_score, traces)
+    else
+        if verbose
+            println("Sampling trajectory from replicates...")
+        end
+        trace = rand(traces)
     end
-    scores = get_score.(traces)
-    total_score = Gen.logsumexp(scores)
-    probs = exp.(scores .- total_score)
-    trace = traces[categorical(probs)]
     if verbose
         println("Score: ", trace.score)
         println("Cost: ", trace.cost)
