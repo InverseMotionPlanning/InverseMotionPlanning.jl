@@ -9,6 +9,14 @@ CBPQ.support(p::Point, dir::AbstractVector) =
 CBPQ.support(p::AbstractVector, dir::AbstractVector) =
     SVector{length(p)}(p)
 
+# Check whether a point represented as a vector is in a particular geometry or mesh
+Base.in(p::AbstractVector{<:Real}, g::Geometry) =
+    Point(p) in g
+Base.in(p::AbstractVector{<:Real}, d::Domain) =
+    Point(p) in d
+Base.in(p::AbstractVector{<:Real}, b::Box{D}) where {D} =
+    length(p) == D && all(b.min.coords[i] <= p[i] <= b.max.coords[i] for i in 1:D)
+
 "Returns minimum translation vector between two convex bodies `p` and `q`."
 function min_translation(
     p::Any, q::Any, init_dir::SVector{D, T};
@@ -101,7 +109,7 @@ end
 
 function signed_dist(p::AbstractVector, g::Geometry)
     g = ignore_derivatives(g)
-    inside = @ignore_derivatives Point(p) in g
+    inside = @ignore_derivatives p in g
     return inside ? -interior_dist(p, g) : min_dist(p, g)
 end
 signed_dist(p::Point, g::Geometry) =
@@ -142,7 +150,7 @@ end
 
 function possible_collisions(p, scene::Scene{D, T}, d_safe::Real) where {D, T}
     obstacles = filter(scene.obstacles) do obs
-        return @ignore_derivatives Point(p) in extended_bbox(obs, d_safe)        
+        return @ignore_derivatives p in extended_bbox(obs, d_safe)        
     end::Vector{Geometry{D, T}}
     return obstacles
 end

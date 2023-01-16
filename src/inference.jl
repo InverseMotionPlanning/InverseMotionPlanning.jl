@@ -1,6 +1,6 @@
 # Export kernels
 export drift_kernel_block, drift_kernel_point, drift_kernel_trajectory
-export nmc, nmc_multiple_try, nmc_mala, nhmc
+export nmc, nmc_reweight, nmc_multiple_try, nmc_mala, nhmc
 # Export samplers
 export mcmc_sampler, rwmh_sampler, mala_sampler, hmc_sampler
 export nmc_sampler, nmc_mala_sampler, nhmc_sampler
@@ -57,7 +57,7 @@ Reweighting Newtonian Monte Carlo (NMC) kernel over [`TrajectoryTrace`]s or
 hierarchical traces that contain [`TrajectoryTrace`] subtraces. Returns
 the new trace and incremental importance weight.
 """
-function nmc_reweight(trace::Trace, selection = AllSelection();
+@inline function nmc_reweight(trace::Trace, selection = AllSelection();
                       step_size::Real=0.1)
     # Sample proposals for each trajectory subtrace
     fwd_weight = 0.0
@@ -115,7 +115,7 @@ function nmc_reweight(trace::Trace, selection = AllSelection();
 
     # Compute incremental importance weight and return
     weight = up_weight - fwd_weight + bwd_weight
-    return trace, weight
+    return new_trace, weight
 end
 
 """
