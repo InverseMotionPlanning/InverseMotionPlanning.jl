@@ -5,6 +5,7 @@ using LinearAlgebra
 using ChainRulesCore
 using Meshes
 using Gen
+using GenParticleFilters
 
 import ConvexBodyProximityQueries as CBPQ
 import Zygote: Zygote, withgradient, hessian

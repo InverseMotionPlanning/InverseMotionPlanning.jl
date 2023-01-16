@@ -1,11 +1,12 @@
 # Export kernels
 export drift_kernel_block, drift_kernel_point, drift_kernel_trajectory
-export nmc, nmc_reweight, nmc_multiple_try, nmc_mala, nhmc
+export nmc, nmc_multiple_try, nmc_mala, nhmc
+export mala_reweight, nmc_reweight
 # Export samplers
 export mcmc_sampler, rwmh_sampler, mala_sampler, hmc_sampler
 export nmc_sampler, nmc_mala_sampler, nhmc_sampler
 
-## Proposals ##
+## MCMC Proposals ##
 
 "Gaussian drift proposal on each point in a trajectory."
 @gen function drift_proposal_point(trace, t::Int, sigma::Real)
@@ -48,6 +49,54 @@ end
         ts = t:min(t+block_size-1, n_points-2)
         trace ~ mh(trace, drift_proposal_block, (ts, sigma))
     end
+end
+
+"""
+    (new_trace, weight) = mala_reweight(trace, selection::Selection, tau::Real)
+
+Reweighting Langenvin ascent kernel. Instead of accepting or rejecting the 
+proposed trace as in MALA, returns an incremental weight along with the trace.
+"""
+function mala_reweight(
+    trace, selection::Selection, tau::Real;
+    check=false, observations=EmptyChoiceMap()
+)
+    args = get_args(trace)
+    argdiffs = map((_) -> NoChange(), args)
+    std = sqrt(2 * tau)
+    retval_grad = accepts_output_grad(get_gen_fn(trace)) ? zero(get_retval(trace)) : nothing
+
+    # forward proposal
+    (_, values_trie, gradient_trie) = choice_gradients(trace, selection, retval_grad)
+    values = to_array(values_trie, Float64)
+    gradient = to_array(gradient_trie, Float64)
+    forward_mu = values + tau * gradient
+    forward_score = 0.
+    proposed_values = Vector{Float64}(undef, length(values))
+    for i=1:length(values)
+        proposed_values[i] = random(Gen.normal, forward_mu[i], std)
+        forward_score += logpdf(Gen.normal, proposed_values[i], forward_mu[i], std)
+    end
+
+    # evaluate model weight
+    constraints = from_array(values_trie, proposed_values)
+    (new_trace, up_weight, _, discard) = update(trace,
+        args, argdiffs, constraints)
+    check && Gen.check_observations(get_choices(new_trace), observations)
+
+    # backward proposal
+    (_, _, backward_gradient_trie) = choice_gradients(new_trace, selection, retval_grad)
+    backward_gradient = to_array(backward_gradient_trie, Float64)
+    @assert length(backward_gradient) == length(values)
+    backward_score = 0.
+    backward_mu  = proposed_values + tau * backward_gradient
+    for i=1:length(values)
+        backward_score += logpdf(Gen.normal, values[i], backward_mu[i], std)
+    end
+
+    # compute and return incremental importance weight
+    weight = up_weight - forward_score + backward_score
+    return new_trace, weight
 end
 
 """
