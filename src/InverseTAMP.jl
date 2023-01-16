@@ -18,6 +18,7 @@ import MeshViz
 include("geometry.jl")
 include("costs.jl")
 include("gen_utils.jl")
+include("distributions.jl")
 include("trajectory_gf.jl")
 include("inference.jl")
 include("callbacks.jl")
