@@ -3,6 +3,10 @@ function get_subtrace(trace::Trace, addr)
     error("Not implemented.")
 end
 
+function get_subtrace(trace::Trace, addr::Nothing)
+    return trace
+end
+
 function get_subtrace(trace::Gen.DynamicDSLTrace, addr)
     return trace.trie[addr].subtrace_or_retval
 end

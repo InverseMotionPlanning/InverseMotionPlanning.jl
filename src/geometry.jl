@@ -1,5 +1,5 @@
 ## Geometric Utilities ##
-export min_dist, interior_dist, signed_dist, extended_bbox, Scene
+export min_dist, interior_dist, signed_dist, extended_bbox
 
 # Implement CBPQ support functions for Meshes.jl types
 CBPQ.support(g::Geometry, dir::AbstractVector) =
@@ -17,28 +17,19 @@ Base.in(p::AbstractVector{<:Real}, d::Domain) =
 Base.in(p::AbstractVector{<:Real}, b::Box{D}) where {D} =
     length(p) == D && all(b.min.coords[i] <= p[i] <= b.max.coords[i] for i in 1:D)
 
-"Returns minimum translation vector between two convex bodies `p` and `q`."
-function min_translation(
-    p::Any, q::Any, init_dir::SVector{D, T};
-    max_iter=100, atol::T=sqrt(eps(T))*oneunit(T)) where {D, T}
-    collision, dir, psimplex, qsimplex, sz =
-        CBPQ.gjk(p, q, init_dir, max_iter, atol, CBPQ.minimum_distance_cond)
-    return collision ? zero(dir) : dir
-end
-min_translation(p::PointOrGeometry, q::PointOrGeometry; kwargs...) =
-    min_translation(p, q, SVector(centroid_diff(p, q)); kwargs...)
-min_translation(p::AbstractVector, q::PointOrGeometry; kwargs...) =
-    min_translation(p, q, SVector(centroid_diff(p, q)); kwargs...)
+# Convenience union types
+const GeometryOrMesh{D, T} = Union{Geometry{D, T}, Mesh{D, T}}
+const PointOrGeometryOrMesh{D, T} = Union{PointOrGeometry{D, T}, Mesh{D, T}}
 
-"Difference between centroids of two points or geometries."
-centroid_diff(g1::PointOrGeometry, g2::PointOrGeometry) =
+"Difference between centroids of two points or geometries or meshes."
+centroid_diff(g1::PointOrGeometryOrMesh, g2::PointOrGeometryOrMesh) =
     centroid(g1) - centroid(g2)
-centroid_diff(p::AbstractVector, g::PointOrGeometry) =
+centroid_diff(p::AbstractVector, g::PointOrGeometryOrMesh) =
     p - coordinates(centroid(g))
 
 # Define reverse AD rule for `centroid_diff`
 function ChainRulesCore.rrule(
-    ::typeof(centroid_diff), p::AbstractVector{T}, g::PointOrGeometry
+    ::typeof(centroid_diff), p::AbstractVector{T}, g::PointOrGeometryOrMesh
 ) where {T}
     diff = centroid_diff(p, g)
     function centroid_diff_pullback(diff_)
@@ -48,15 +39,44 @@ function ChainRulesCore.rrule(
     return diff, centroid_diff_pullback
 end
 
-"Return minimum distance between two points or geometries."
+"Returns minimum translation vector between two convex bodies `p` and `q`."
+function min_translation(
+    p::Any, q::Any, init_dir::SVector{D, T};
+    max_iter=100, atol::T=sqrt(eps(T))*oneunit(T)) where {D, T}
+    collision, dir, psimplex, qsimplex, sz =
+        CBPQ.gjk(p, q, init_dir, max_iter, atol, CBPQ.minimum_distance_cond)
+    return collision ? zero(dir) : dir
+end
+
+min_translation(p::PointOrGeometry, q::PointOrGeometry; kwargs...) =
+    min_translation(p, q, SVector(centroid_diff(p, q)); kwargs...)
+min_translation(p::AbstractVector, q::PointOrGeometry; kwargs...) =
+    min_translation(p, q, SVector(centroid_diff(p, q)); kwargs...)
+
+"Returns minimum translation between a convex body `p` and mesh `q`."
+function min_translation(p::AbstractVector, q::Mesh; kwargs...)
+    min_dist = Inf
+    min_dir = nothing
+    for element in q
+        dir = min_translation(p, element; kwargs...)
+        dist = norm(diff)
+        if dist < min_dist
+            min_dist = dist
+            min_dir = dir
+        end
+    end
+    return min_dir
+end
+
+"Return minimum distance to a point, geometry, or mesh."
 min_dist(g1::PointOrGeometry, g2::PointOrGeometry) = 
     norm(min_translation(g1, g2))
-min_dist(p::AbstractVector, g::PointOrGeometry) =
+min_dist(p::AbstractVector, g::PointOrGeometryOrMesh) =
     norm(min_translation(p, g))
 
 # Define reverse AD rule for `min_dist`
 function ChainRulesCore.rrule(
-    ::typeof(min_dist), p::AbstractVector, g::PointOrGeometry
+    ::typeof(min_dist), p::AbstractVector, g::PointOrGeometryOrMesh
 )
     dir = min_translation(p, g)
     dist = norm(dir)
@@ -72,15 +92,18 @@ interior_dist(p, g::Geometry) =
     minimum(min_dist(p, s) for s in simplexify(boundary(g)))
 interior_dist(p, b::Union{Ball,Sphere}) =
     b.radius - norm(centroid_diff(p, b))
+interior_dist(p, m::Mesh) = 
+    minimum(min_dist(p, el) for el in m)
 
 # Define reverse AD rules for `interior_dist`
 function ChainRulesCore.rrule(
-    ::typeof(interior_dist), p::AbstractVector, g::Geometry
+    ::typeof(interior_dist), p::AbstractVector, g::GeometryOrMesh
 )
     min_dist = Inf
     min_dir = nothing
-    for s in simplexify(boundary(g))
-        dir = min_translation(p, s)
+    elements = g isa Geometry ? simplexify(boundary(g)) : g
+    for el in elements
+        dir = min_translation(p, el)
         dist = norm(dir)
         if dist < min_dist
             min_dist = dist
@@ -107,15 +130,16 @@ function ChainRulesCore.rrule(
     return dist, interior_dist_pullback
 end
 
-function signed_dist(p::AbstractVector, g::Geometry)
+"Return signed distance of a point to a geometry or mesh."
+function signed_dist(p::AbstractVector, g::GeometryOrMesh)
     g = ignore_derivatives(g)
     inside = @ignore_derivatives p in g
     return inside ? -interior_dist(p, g) : min_dist(p, g)
 end
-signed_dist(p::Point, g::Geometry) =
+signed_dist(p::Point, g::GeometryOrMesh) =
     p in g ? -interior_dist(p, g) : min_dist(p, g)
 
-function signed_dist(p, gs::AbstractVector{<:Geometry})
+function signed_dist(p, gs::AbstractVector{<:GeometryOrMesh})
     if isempty(gs)
         return Inf
     else
@@ -124,33 +148,8 @@ function signed_dist(p, gs::AbstractVector{<:Geometry})
     end
 end
     
-function extended_bbox(g::Geometry{D}, d_safe::Real) where {D}
+function extended_bbox(g::GeometryOrMesh{D}, d_safe::Real) where {D}
     box = boundingbox(g)
     offset = Vec(ntuple(Returns(d_safe), Val(D)))
     return Box(box.min - offset, box.max + offset)
-end
-
-## Scene Datatype ##
-
-struct Scene{D, T} <: Meshes.Domain{D, T}
-    obstacles::Vector{Geometry{D, T}}   
-end
-
-Scene(obstacles::Geometry{D,T}...) where {D, T} =
-    Scene{D,T}(collect(obstacles))
-
-Meshes.element(scene::Scene, ind) = scene.obstacles[ind]
-Meshes.nelements(scene::Scene) = length(scene.obstacles)
-Base.eltype(scene::Scene) = eltype(scene.obstacles)
-
-function signed_dist(p, scene::Scene)
-    dists = map(obs -> signed_dist(p, obs), ignore_derivatives(scene.obstacles))
-    return minimum(dists)
-end
-
-function possible_collisions(p, scene::Scene{D, T}, d_safe::Real) where {D, T}
-    obstacles = filter(scene.obstacles) do obs
-        return @ignore_derivatives p in extended_bbox(obs, d_safe)        
-    end::Vector{Geometry{D, T}}
-    return obstacles
 end

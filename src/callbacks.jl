@@ -100,7 +100,15 @@ function init_plot!(cb::PlotCallback, trace, axis = nothing)
     if isnothing(axis)
         fig = Figure(resolution=(600, 600))
         if dims == 2
-            cb.axis = Axis(fig[1, 1], aspect = 1)
+            cb.axis = Axis(fig[1, 1], aspect = Makie.DataAspect())
+            # Set limits if specified
+            min_coords = Tuple(scene.limits.min.coords)
+            max_coords = Tuple(scene.limits.max.coords)
+            if !any(min_coords .== -Inf) && !any(max_coords .== Inf)
+                x_lims = (min_coords[1], max_coords[1])
+                y_lims = (min_coords[2], max_coords[2])
+                Makie.limits!(cb.axis, x_lims, y_lims)
+            end
         elseif dims == 3
             cb.axis = Axis3(fig[1, 1])
         else
@@ -112,7 +120,7 @@ function init_plot!(cb::PlotCallback, trace, axis = nothing)
     end
     if cb.options[:show_scene]
         scene_obs = Observable(scene)
-        plot!(cb.axis, scene_obs, color=:grey)
+        plot!(cb.axis, scene_obs)
         cb.observables[:scene] = scene_obs 
     end
     if cb.options[:show_trajectory]

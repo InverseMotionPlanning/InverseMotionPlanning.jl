@@ -16,6 +16,7 @@ import GLMakie:
 import MeshViz
 
 include("geometry.jl")
+include("scenes.jl")
 include("costs.jl")
 include("gen_utils.jl")
 include("distributions.jl")

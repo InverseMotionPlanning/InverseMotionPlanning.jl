@@ -61,7 +61,7 @@ the new trace and incremental importance weight.
                       step_size::Real=0.1)
     # Sample proposals for each trajectory subtrace
     fwd_weight = 0.0
-    new_choices = choicemap()
+    new_choices = nothing
     subtrace_iter = subtrace_selections(trace, selection, TrajectoryTrace)
     for (addr, subtr, subsel) in subtrace_iter
         # Convert sub-selection to trajectory indices
@@ -87,7 +87,12 @@ the new trace and incremental importance weight.
             new_trajectory[:, idxs.-1] = reshape(new_values, D, :)
             subchoices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
         end
-        set_submap!(new_choices, addr, subchoices)
+        if isnothing(addr)
+            new_choices = subchoices
+        else
+            new_choices = isnothing(new_choices) ? choicemap() : new_choices
+            set_submap!(new_choices, addr, subchoices)
+        end
     end
 
     # Update trace with new choices
