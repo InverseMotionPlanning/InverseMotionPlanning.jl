@@ -2,6 +2,7 @@
 export TrajectoryChoiceMap, TrajectoryTrace
 export BoltzmannTrajectoryArgs, BoltzmannTrajectoryGF
 export boltzmann_trajectory_2D, boltzmann_trajectory_3D
+export sample_trajectory
 
 ## Trajectory ChoiceMap ##
 
@@ -263,3 +264,59 @@ Gen.has_argument_grads(gen_fn::BoltzmannTrajectoryGF) =
 
 Gen.accepts_output_grad(gen_fn::BoltzmannTrajectoryGF) =
     true
+
+## Trajectory Sampling and Optimization ##
+
+function sample_trajectory(
+    n_dims::Int, args::Tuple;
+    n_replicates::Int = 20,
+    n_mcmc_iters::Int = 10,
+    n_optim_iters::Int = 10,
+    verbose=false
+)
+    # Generate initial trajectory traces
+    if verbose
+        println("Generating $n_replicates initial trajectories...")
+    end
+    traces = [generate(BoltzmannTrajectoryGF{n_dims}(), args)[1]
+              for _ in 1:n_replicates]
+    # Diversify initial trajectories via NMC reweigting steps
+    if verbose
+        println("Diversifying initial trajectories via NMC proposals...")
+    end
+    for i in 1:n_replicates
+        step_size = rand([0.1, 0.2, 0.4, 0.8])
+        traces[i], _ = nmc_reweight(traces[i], AllSelection(); step_size)
+    end
+    # Run stochastic optimization via MCMC
+    if verbose
+        println("Running $n_mcmc_iters iterations of MCMC (NMC + MALA)...")
+    end
+    for i in 1:n_replicates
+        traces[i] = nmc_mala_sampler(traces[i], n_mcmc_iters;
+                                     mala_steps=5, mala_step_size=0.002, 
+                                     nmc_steps=1, nmc_step_size=0.5)
+    end
+    # Optimize each trace via backtracking gradient descent
+    if verbose
+        println("Running $n_optim_iters iterations of gradient descent...")
+    end
+    for i in 1:n_replicates
+        for k in 1:n_optim_iters
+            traces[i] = map_optimize(traces[i], AllSelection())
+        end
+    end
+    # Sample a trace according to its score (unnormalized log probability)
+    if verbose
+        println("Sampling trajectory from replicates...")
+    end
+    scores = get_score.(traces)
+    total_score = Gen.logsumexp(scores)
+    probs = exp.(scores .- total_score)
+    trace = traces[categorical(probs)]
+    if verbose
+        println("Score: ", trace.score)
+        println("Cost: ", trace.cost)
+    end
+    return trace
+end
