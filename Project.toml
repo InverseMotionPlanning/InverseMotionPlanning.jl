@@ -8,6 +8,7 @@ ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 ConvexBodyProximityQueries = "e9983d58-8b29-5530-8046-db49618142f9"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 Gen = "ea4f424c-a589-11e8-07c0-fd5c91b9da4a"
+GenParticleFilters = "56b76ac4-72ef-411e-b419-6d312ed86a6f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MeshViz = "9ecf9c4f-6e5a-4b5e-83ae-06f2c7a661d8"
 Meshes = "eacbb407-ea5a-433e-ab97-5258b1ca43fa"
@@ -16,6 +17,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
 Gen = "0.4.5"
+GenParticleFilters = "0.1.8"
 julia = "1.7"
 
 [extras]
