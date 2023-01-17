@@ -35,8 +35,8 @@ function Zygote.hessian(::typeof(smoothness_cost), trajectory::AbstractMatrix)
     offdiagonal = -ones(n_elems - D)
     # Construct matrix
     H = diagm(diagonal)
-    H[diagind(H, 2)] = offdiagonal
-    H[diagind(H, -2)] = offdiagonal
+    H[diagind(H, D)] = offdiagonal
+    H[diagind(H, -D)] = offdiagonal
     return H
 end
 
