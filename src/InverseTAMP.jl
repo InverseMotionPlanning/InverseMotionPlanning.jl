@@ -25,5 +25,6 @@ include("distributions.jl")
 include("trajectory_gf.jl")
 include("inference.jl")
 include("callbacks.jl")
+include("analysis_utils.jl")
 
 end

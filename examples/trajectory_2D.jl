@@ -46,50 +46,22 @@ tr = nhmc_sampler(tr, 100; callback, hmc_steps=1, hmc_eps=0.005, hmc_L=10,
 
 
 # Plot run statistics
-function collect_traces(sampler, trace::Trace, n_iters::Int; kwargs...)
-    callback = StoreTracesCallback()
-    callback(tr, true)
-    sampler(trace, n_iters; callback, kwargs...) # Run sampler
-    return callback.traces
-end
-
 n_iters = 100
-tr, w = generate(boltzmann_trajectory_2D, args)
+trace0, w = generate(boltzmann_trajectory_2D, args)
 
 traces = Dict{String,Vector{TrajectoryTrace}}()
-traces["rwmh"] = collect_traces(rwmh_sampler, tr, n_iters; sigma=0.5, block_size=1)
-traces["mala"] = collect_traces(mala_sampler, tr, n_iters; tau=0.002)
-traces["hmc"] = collect_traces(hmc_sampler, tr, n_iters; eps=0.01, L=10)
-traces["nmc"] = collect_traces(nmc_sampler, tr, n_iters; step_size=0.05, n_tries=1)
+traces["rwmh"] = collect_traces(rwmh_sampler, trace0, n_iters; sigma=0.5, block_size=1)
+traces["mala"] = collect_traces(mala_sampler, trace0, n_iters; tau=0.002)
+traces["hmc"] = collect_traces(hmc_sampler, trace0, n_iters; eps=0.01, L=10)
+traces["nmc"] = collect_traces(nmc_sampler, trace0, n_iters; step_size=0.05, n_tries=1)
 #traces["nmc_mala"] = collect_traces(nmc_mala_sampler, tr, 100; callback, mala_steps=5,
 #    mala_step_size=0.002, nmc_tries=5, nmc_steps=1, nmc_step_size=0.5)
 #traces["nhmc"] = collect_traces(nhmc_sampler, tr, 100; callback, hmc_steps=1, hmc_eps=0.005,
 #    hmc_L=10, nmc_tries=5, nmc_steps=1, nmc_step_size=0.75)
 
-cov_traces = Dict{String,Float64}()
-costs = Dict{String,Vector{Float64}}()
-for (key, trs) in traces
-    trajectories = map(tr -> vec(tr.trajectory), trs)
-    cov_traces[key] = LinearAlgebra.tr(cov(trajectories))
-    costs[key] = map(tr -> tr.cost, trs)
-end
-
-barplot(1:length(cov_traces), collect(values(cov_traces)),
-    axis=(xticks=(1:length(cov_traces), collect(keys(cov_traces))),
-        title="Trace of Trajectory Covariance Matrix", aspect=1, titlealign=:left, titlesize=22),
-)
-
-violin(repeat(1:length(costs), inner=101), vcat(values(costs)...),
-    axis=(xticks=(1:length(costs), collect(keys(costs))),
-        title="Trajectory Cost", aspect=1, titlealign=:left, titlesize=22),
-)
-
-scene = GLMakie.Scene()
-lines!(scene, 0:5, 0:5)
-for (key, cs) in costs
-    lines!(scene, 1:length(cs), cs)
-end
-
+plot_trajectory_covariance_trace(traces)
+plot_cost_distribution(traces)
+plot_cost_vs_iteration(traces)
 
 ## Construct side-by-side comparison animation ##
 
