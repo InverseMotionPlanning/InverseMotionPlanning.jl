@@ -6,6 +6,7 @@ using ChainRulesCore
 using Meshes
 using Gen
 using GenParticleFilters
+using Statistics
 
 import ConvexBodyProximityQueries as CBPQ
 import Zygote: Zygote, withgradient, hessian
