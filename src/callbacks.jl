@@ -99,7 +99,7 @@ function (cb::PlotCallback)(pf_state::ParticleFilterState)
     end
     # Iterate over each trace/particle in particle filter
     traces = get_traces(pf_state)
-    norm_weights = get_norm_weights(pf_state)
+    norm_weights = get_norm_weights(pf_state, true)
     for (idx, (trace, weight)) in enumerate(zip(traces, norm_weights))
         # Update alpha value
         name = observable_name("trace_alpha", nothing, idx)
@@ -145,7 +145,7 @@ function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothin
     init_plot_scene!(cb, scene, axis)
     # Plot each trace/particle in particle filter
     traces = get_traces(pf_state)
-    norm_weights = get_norm_weights(pf_state)
+    norm_weights = get_norm_weights(pf_state, true)
     for (idx, (trace, weight)) in enumerate(zip(traces, norm_weights))
         # Plot trajectories in trace
         init_plot_trajectory!(cb, trace, idx, alpha=weight)
@@ -205,25 +205,27 @@ function init_plot_trajectory!(
         name = observable_name("trajectory", addr, idx)
         cb.observables[name] = trajectory_obs
         color = cb.options[:trajectory_color]
-        scatter!(cb.axis, trajectory_obs, color=(color, alpha))
-        lines!(cb.axis, trajectory_obs, color=(color, alpha))
+        color_obs = @lift (color, $alpha)
+        scatter!(cb.axis, trajectory_obs, color=color_obs)
+        lines!(cb.axis, trajectory_obs, color=color_obs)
         # Plot gradients
         if cb.options[:show_gradients]
             gradients_obs = Observable(gradients)
             name = observable_name("gradients", addr, idx)
             cb.observables[name] = gradients_obs
             scale = cb.options[:gradient_scale]
-            color = cb.options[:gradient_color]
+            grad_color = cb.options[:gradient_color]
+            grad_color_obs = @lift (grad_color, $alpha)
             x = @lift($trajectory_obs[1, :])
             y = @lift($trajectory_obs[2, :])
             u = @lift($gradients_obs[1, :] .* scale)
             v = @lift($gradients_obs[2, :] .* scale)
             if dims == 2
-                arrows!(cb.axis, x, y, u, v, color=(color, alpha))
+                arrows!(cb.axis, x, y, u, v, color=grad_color_obs)
             elseif dims == 3
                 z = @lift($trajectory_obs[3, :])
                 w = @lift($gradients_obs[3, :] .* scale)
-                arrows!(cb.axis, x, y, z, u, v, w, color=(color, alpha))
+                arrows!(cb.axis, x, y, z, u, v, w, color=grad_color_obs)
             end
         end
     end

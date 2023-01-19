@@ -150,7 +150,7 @@ the new trace and incremental importance weight.
             subchoices = TrajectoryChoiceMap(reshape(new_values, D, :))
         elseif subsel isa HierarchicalSelection
             new_trajectory = subtr.trajectory[:, 2:end-1]
-            new_trajectory[:, idxs] = reshape(new_values, D, :)
+            new_trajectory[:, idxs .- 1] = reshape(new_values, D, :)
             subchoices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
         end
         if isnothing(addr)
@@ -263,7 +263,7 @@ function nmc_multiple_try(
         new_choices = TrajectoryChoiceMap(reshape(new_values, D, :))
     elseif selection isa HierarchicalSelection
         new_trajectory = trace.trajectory[:, 2:end-1]
-        new_trajectory[:, idxs] = reshape(new_values, D, :)
+        new_trajectory[:, idxs .- 1] = reshape(new_values, D, :)
         new_choices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
     end
     new_trace, _, _, _ = update(trace, new_choices)

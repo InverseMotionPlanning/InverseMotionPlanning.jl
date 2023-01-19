@@ -1,3 +1,6 @@
+import GenParticleFilters:
+    ParticleFilterView, get_log_norm_weights, get_norm_weights
+
 "Sample from the standard Gumbel distribution."
 function randgumbel()
     return -log(-log(rand()))
@@ -16,6 +19,28 @@ function randboltzmann(elements, log_weights)
     end
     return chosen
 end
+
+function Gen.get_log_weights(state::ParticleFilterView, replace_nan::Bool)
+    return replace_nan ?
+        replace(state.log_weights, NaN => -Inf) : state.log_weights
+end
+
+function get_log_norm_weights(state::ParticleFilterView, replace_nan::Bool)
+    return GenParticleFilters.lognorm(get_log_weights(state, replace_nan))
+end
+
+function get_norm_weights(state::ParticleFilterView, replace_nan::Bool)
+    return exp.(get_log_norm_weights(state, replace_nan))
+end
+
+"""
+    get_norm_weights(state::ParticleFilterState)
+
+Return the vector of normalized weights for the current state,
+one for each particle.
+"""
+get_norm_weights(state::ParticleFilterView) = exp.(get_log_norm_weights(state))
+
 
 "Given a hierarchical trace, return the subtrace located at `addr`."
 function get_subtrace(trace::Trace, addr)
