@@ -1,5 +1,5 @@
 ## Callbacks for printing and plotting traces ##
-export PrintCallback, PlotCallback, PrintPlotCallback
+export PrintCallback, PlotCallback, PrintPlotCallback, StoreTracesCallback
 export init_plot!
 
 "Callback for printing trace information."
@@ -8,8 +8,8 @@ struct PrintCallback
     options::Dict
 end
 
-function PrintCallback(io::IO = stdout; kwargs...)
-    defaults = Dict{Symbol, Any}(
+function PrintCallback(io::IO=stdout; kwargs...)
+    defaults = Dict{Symbol,Any}(
         :score => true,
         :accepted => false,
         :costs => false,
@@ -45,13 +45,13 @@ end
 
 "Callback for plotting trace information."
 mutable struct PlotCallback
-    axis::Union{Axis, Axis3, Nothing}
-    options::Dict{Symbol, Any}
-    observables::Dict{Symbol, Observable}
+    axis::Union{Axis,Axis3,Nothing}
+    options::Dict{Symbol,Any}
+    observables::Dict{Symbol,Observable}
 end
 
-function PlotCallback(axis = nothing, observables = Dict(); kwargs...)
-    defaults = Dict{Symbol, Any}(
+function PlotCallback(axis=nothing, observables=Dict(); kwargs...)
+    defaults = Dict{Symbol,Any}(
         :show_scene => true,
         :show_trajectory => true,
         :show_gradients => false,
@@ -127,7 +127,7 @@ function (cb::PlotCallback)(pf_state::ParticleFilterState)
     end
 end
 
-function init_plot!(cb::PlotCallback, trace::Trace, axis = nothing)
+function init_plot!(cb::PlotCallback, trace::Trace, axis=nothing)
     # Extract scene from trace
     trace_args = get_args(trace)
     scene = trace_args[findfirst(a -> a isa Scene, trace_args)]
@@ -137,7 +137,7 @@ function init_plot!(cb::PlotCallback, trace::Trace, axis = nothing)
     init_plot_trajectory!(cb, trace)
 end
 
-function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis = nothing)
+function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothing)
     # Extract scene from first trace
     trace_args = get_args(get_traces(pf_state)[1])
     scene = trace_args[findfirst(a -> a isa Scene, trace_args)]
@@ -158,7 +158,7 @@ function init_plot_scene!(cb::PlotCallback, scene::Scene, axis=nothing)
     if isnothing(axis)
         fig = Figure(resolution=(600, 600))
         if dims == 2
-            cb.axis = Axis(fig[1, 1], aspect = Makie.DataAspect())
+            cb.axis = Axis(fig[1, 1], aspect=Makie.DataAspect())
             # Set limits if specified
             min_coords = Tuple(scene.limits.min.coords)
             max_coords = Tuple(scene.limits.max.coords)
@@ -180,7 +180,7 @@ function init_plot_scene!(cb::PlotCallback, scene::Scene, axis=nothing)
     if cb.options[:show_scene]
         scene_obs = Observable(scene)
         plot!(cb.axis, scene_obs)
-        cb.observables[:scene] = scene_obs 
+        cb.observables[:scene] = scene_obs
     end
 end
 
@@ -188,7 +188,9 @@ function init_plot_trajectory!(
     cb::PlotCallback, trace::Trace, idx=nothing;
     alpha=1.0
 )
-    if !cb.options[:show_trajectory] return end
+    if !cb.options[:show_trajectory]
+        return
+    end
     # Construct observable for transparency / alpha value
     alpha = Observable(alpha)
     cb.observables[observable_name("trace_alpha", nothing, idx)] = alpha
@@ -201,7 +203,7 @@ function init_plot_trajectory!(
         # Plot trajectory
         trajectory_obs = Observable(trajectory)
         name = observable_name("trajectory", addr, idx)
-        cb.observables[name] = trajectory_obs 
+        cb.observables[name] = trajectory_obs
         color = cb.options[:trajectory_color]
         scatter!(cb.axis, trajectory_obs, color=(color, alpha))
         lines!(cb.axis, trajectory_obs, color=(color, alpha))
@@ -210,7 +212,7 @@ function init_plot_trajectory!(
             gradients_obs = Observable(gradients)
             name = observable_name("gradients", addr, idx)
             cb.observables[name] = gradients_obs
-            scale = cb.options[:gradient_scale] 
+            scale = cb.options[:gradient_scale]
             color = cb.options[:gradient_color]
             x = @lift($trajectory_obs[1, :])
             y = @lift($trajectory_obs[2, :])
@@ -239,6 +241,7 @@ function observable_name(name, addr=nothing, idx=nothing)
     return Symbol(name)
 end
 
+
 "Callback for printing and plotting trace information."
 struct PrintPlotCallback
     print_callback::PrintCallback
@@ -246,7 +249,7 @@ struct PrintPlotCallback
 end
 
 function PrintPlotCallback(
-    io::IO = stdout, axis = nothing, observables=Dict();
+    io::IO=stdout, axis=nothing, observables=Dict();
     kwargs...
 )
     print_callback = PrintCallback(io; kwargs...)
@@ -257,4 +260,18 @@ end
 function (cb::PrintPlotCallback)(trace, accepted)
     cb.print_callback(trace, accepted)
     cb.plot_callback(trace, accepted)
+end
+
+
+"Callback to store traces and functions to calculate run statistics."
+struct StoreTracesCallback
+    traces::Vector{TrajectoryTrace}
+end
+
+function StoreTracesCallback()
+    return StoreTracesCallback([])
+end
+
+function (cb::StoreTracesCallback)(trace, accepted)
+    push!(cb.traces, trace)
 end

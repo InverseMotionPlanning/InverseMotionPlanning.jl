@@ -6,6 +6,7 @@ using ChainRulesCore
 using Meshes
 using Gen
 using GenParticleFilters
+using Statistics
 
 import ConvexBodyProximityQueries as CBPQ
 import Zygote: Zygote, withgradient, hessian
@@ -25,5 +26,6 @@ include("trajectory_gf.jl")
 include("smc_trajectory_gf.jl")
 include("inference.jl")
 include("callbacks.jl")
+include("analysis_utils.jl")
 
 end
