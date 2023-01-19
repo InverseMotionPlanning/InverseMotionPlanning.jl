@@ -22,6 +22,7 @@ include("costs.jl")
 include("gen_utils.jl")
 include("distributions.jl")
 include("trajectory_gf.jl")
+include("smc_trajectory_gf.jl")
 include("inference.jl")
 include("callbacks.jl")
 

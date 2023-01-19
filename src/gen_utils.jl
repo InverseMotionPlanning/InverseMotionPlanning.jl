@@ -1,3 +1,22 @@
+"Sample from the standard Gumbel distribution."
+function randgumbel()
+    return -log(-log(rand()))
+end
+
+"Sample from a discrete Boltzmann distribution given unnormalized log probabilities."
+function randboltzmann(elements, log_weights)
+    chosen, chosen_weight = nothing, -Inf
+    # Gumbel-max reservoir sampling
+    for (elem, weight) in zip(elements, log_weights) 
+        weight += randgumbel()
+        if weight > chosen_weight
+            chosen = elem
+            chosen_weight = weight
+        end
+    end
+    return chosen
+end
+
 "Given a hierarchical trace, return the subtrace located at `addr`."
 function get_subtrace(trace::Trace, addr)
     error("Not implemented.")

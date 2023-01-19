@@ -1,7 +1,7 @@
 # Export kernels
 export drift_kernel_block, drift_kernel_point, drift_kernel_trajectory
 export nmc, nmc_multiple_try, nmc_mala, nhmc
-export mala_reweight, nmc_reweight
+export ula_reweight, nmc_reweight
 # Export samplers
 export mcmc_sampler, rwmh_sampler, mala_sampler, hmc_sampler
 export nmc_sampler, nmc_mala_sampler, nhmc_sampler
@@ -52,12 +52,12 @@ end
 end
 
 """
-    (new_trace, weight) = mala_reweight(trace, selection::Selection, tau::Real)
+    (new_trace, weight) = ula_reweight(trace, selection::Selection, tau::Real)
 
 Reweighting Langenvin ascent kernel. Instead of accepting or rejecting the 
 proposed trace as in MALA, returns an incremental weight along with the trace.
 """
-function mala_reweight(
+function ula_reweight(
     trace, selection::Selection, tau::Real;
     check=false, observations=EmptyChoiceMap()
 )

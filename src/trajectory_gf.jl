@@ -1,6 +1,6 @@
 ## Generative function, trace and choicemaps for Boltzmann trajectories ##
 export TrajectoryChoiceMap, TrajectoryTrace
-export BoltzmannTrajectoryArgs, BoltzmannTrajectoryGF
+export BoltzmannTrajectoryArgs, BoltzmannTrajectoryTrace, BoltzmannTrajectoryGF
 export boltzmann_trajectory_2D, boltzmann_trajectory_3D
 export sample_trajectory
 
@@ -64,32 +64,8 @@ end
 
 ## Trajectory Trace ##
 
-const BoltzmannTrajectoryArgs{N,S} = @NamedTuple begin
-    n_points::N
-    start::Vector{Float64}
-    stop::Vector{Float64}
-    scene::S
-    d_safe::Float64
-    obs_mult::Float64
-    alpha::Float64    
-end
-
-struct TrajectoryTrace{D} <: Trace
-    "Generative function that generated this trace."
-    gen_fn::GenerativeFunction
-    "Arguments to generative function."
-    args::BoltzmannTrajectoryArgs{Int, Scene{D, Float64}}
-    "Returned trajectory, including start and stop."
-    trajectory::Matrix{Float64}
-    "Gradients of log probability with respect to arguments."
-    arg_grads::BoltzmannTrajectoryArgs{Nothing, Nothing}
-    "Gradients of log probabliity with respect to each point in trajectory."
-    trajectory_grads::Matrix{Float64}
-    "Cost of trajectory."
-    cost::Float64
-    "Unnormalized log probability of trajectory."
-    score::Float64
-end
+"Abstract trajectory trace."
+abstract type TrajectoryTrace{D} <: Trace end
 
 Gen.get_gen_fn(trace::TrajectoryTrace) =
     trace.gen_fn
@@ -114,9 +90,39 @@ selected_idxs(trace::TrajectoryTrace, ::AllSelection) =
 selected_idxs(trace::TrajectoryTrace, ::EmptySelection) =
     Int[]
 
-## Trajectory GF ##
+"Arguments to a Boltzmann trajectory distribution."
+const BoltzmannTrajectoryArgs{N,S} = @NamedTuple begin
+    n_points::N
+    start::Vector{Float64}
+    stop::Vector{Float64}
+    scene::S
+    d_safe::Float64
+    obs_mult::Float64
+    alpha::Float64    
+end
 
-struct BoltzmannTrajectoryGF{D} <: GenerativeFunction{Matrix{Float64}, TrajectoryTrace{D}} end
+"Trace for an unnormalized Boltzmann distribution over trajectories."
+struct BoltzmannTrajectoryTrace{D} <: TrajectoryTrace{D}
+    "Generative function that generated this trace."
+    gen_fn::GenerativeFunction
+    "Arguments to generative function."
+    args::BoltzmannTrajectoryArgs{Int, Scene{D, Float64}}
+    "Returned trajectory, including start and stop."
+    trajectory::Matrix{Float64}
+    "Gradients of log probability with respect to arguments."
+    arg_grads::BoltzmannTrajectoryArgs{Nothing, Nothing}
+    "Gradients of log probabliity with respect to each point in trajectory."
+    trajectory_grads::Matrix{Float64}
+    "Cost of trajectory."
+    cost::Float64
+    "Unnormalized log probability of trajectory."
+    score::Float64
+end
+
+## Boltzmann Trajectory GF ##
+
+"Generative function that represents an unnormalized Boltzmann distribution over trajectories."
+struct BoltzmannTrajectoryGF{D} <: GenerativeFunction{Matrix{Float64}, BoltzmannTrajectoryTrace{D}} end
 
 const boltzmann_trajectory_2D = BoltzmannTrajectoryGF{2}()
 const boltzmann_trajectory_3D = BoltzmannTrajectoryGF{3}()
@@ -144,7 +150,7 @@ function _trajectory_grads(trajectory::AbstractMatrix,
                              args.d_safe, args.obs_mult, args.alpha)
 end
 
-function _trajectory_grads(trace::TrajectoryTrace)
+function _trajectory_grads(trace::BoltzmannTrajectoryTrace)
     return _trajectory_grads(trace.trajectory, trace.args)
 end
 
@@ -152,11 +158,11 @@ function Gen.simulate(gen_fn::BoltzmannTrajectoryGF, args::Tuple)
     error("Not implemented.")
 end
 
-function Gen.project(trace::TrajectoryTrace, selection::Selection)
+function Gen.project(trace::BoltzmannTrajectoryTrace, selection::Selection)
     error("Not implemented.")
 end
 
-function Gen.project(trace::TrajectoryTrace, selection::EmptySelection)
+function Gen.project(trace::BoltzmannTrajectoryTrace, selection::EmptySelection)
     0.0
 end
 
@@ -170,11 +176,11 @@ function Gen.generate(
     trajectory = reduce(hcat, LinRange(start, stop, n_points))
     # Perturb intermediate points with Gaussian noise
     n_elements = D * (n_points - 2)
-    mu, sigma = zeros(n_elements), ones(n_elements)
-    delta = norm(stop .- start) / n_points - 1
-    noise = broadcasted_normal(mu, sigma) .* delta/10
+    mu = zeros(n_elements)
+    delta = norm(stop .- start) / (n_points - 1)
+    noise = broadcasted_normal(mu, delta / 2) 
+    prop_weight = logpdf(broadcasted_normal, noise, mu, delta / 2)
     trajectory[:, 2:end-1] .+= reshape(noise, D, :)
-    prop_weight = logpdf(broadcasted_normal, noise, mu, sigma)
     # Compute trajectory cost, score, and gradients
     score, grads = withgradient(_trajectory_score,
                                 trajectory, scene, d_safe, obs_mult, alpha)
@@ -184,15 +190,15 @@ function Gen.generate(
     arg_grads = (nothing, start_grad, stop_grad, grads[2:end]...)
     arg_grads = BoltzmannTrajectoryArgs{Nothing, Nothing}(arg_grads)
     # Construct trace
-    trace = TrajectoryTrace{D}(gen_fn, args, trajectory,
-                               arg_grads, trajectory_grads,
-                               cost, score)
+    trace = BoltzmannTrajectoryTrace{D}(gen_fn, args, trajectory,
+                                        arg_grads, trajectory_grads,
+                                        cost, score)
     # Return trace and weight
     return trace, (score - prop_weight)
 end
 
 function Gen.update(
-    trace::TrajectoryTrace{D}, args::Tuple,
+    trace::BoltzmannTrajectoryTrace{D}, args::Tuple,
     argdiffs::Tuple, constraints::ChoiceMap
 ) where {D}
     # Extract arguments
@@ -223,9 +229,9 @@ function Gen.update(
     arg_grads = (nothing, start_grad, stop_grad, grads[2:end]...)
     arg_grads = BoltzmannTrajectoryArgs{Nothing, Nothing}(arg_grads)
     # Construct new trace, incremental weight, and discarded choices
-    new_trace = TrajectoryTrace{D}(trace.gen_fn, args, trajectory,
-                                   arg_grads, trajectory_grads,
-                                   cost, score)
+    new_trace = BoltzmannTrajectoryTrace{D}(trace.gen_fn, args, trajectory,
+                                            arg_grads, trajectory_grads,
+                                            cost, score)
     weight = new_trace.score - trace.score
     deleted_idxs = n_points:(trace.args.n_points-1)
     discarded_idxs = append!(updated_idxs, deleted_idxs)
@@ -235,7 +241,7 @@ function Gen.update(
 end
 
 function Gen.choice_gradients(
-    trace::TrajectoryTrace{D}, selection::Selection, 
+    trace::BoltzmannTrajectoryTrace{D}, selection::Selection, 
     retgrad::Union{Nothing, AbstractMatrix}
 ) where {D}
     # Add retgrad to existing trajectory gradients
