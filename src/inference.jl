@@ -106,8 +106,10 @@ Reweighting Newtonian Monte Carlo (NMC) kernel over [`TrajectoryTrace`]s or
 hierarchical traces that contain [`TrajectoryTrace`] subtraces. Returns
 the new trace and incremental importance weight.
 """
-@inline function nmc_reweight(trace::Trace, selection = AllSelection();
-                      step_size::Real=0.1)
+@inline function nmc_reweight(
+    trace::Trace, selection = AllSelection();
+    step_size::Real=0.1, target_init=nothing, weight_init=1.0
+)
     # Sample proposals for each trajectory subtrace
     fwd_weight = 0.0
     new_choices = nothing
@@ -118,12 +120,27 @@ the new trace and incremental importance weight.
 
         # Extract values, gradients, and Hessian
         values, g, H = _nmc_extract_values_grads_hessian(subtr, idxs)
-        # Compute Newton-Raphson step
-        inv_H = inv(H)
-        step = (inv_H * g) .* step_size
+        # Decide whether to target initial proposal distribution
+        if target_init == :forward # Adjust to match initial proposal
+            start, stop = subtr.args.start, subtr.args.stop
+            n_points = subtr.args.n_points
+            delta = norm(stop .- start) / (n_points - 1)
+            # Compute initial proposal distribution
+            init_mean = reduce(hcat, LinRange(start, stop, n_points))
+            init_mean = vec(init_mean[:, idxs])
+            init_std = delta / (2 * weight_init)
+            # Compute the product of the Gaussians
+            orig_inv_cov = -H ./ (2 * step_size)
+            cov = inv(orig_inv_cov + I / (init_std)^2)
+            mu = cov * orig_inv_cov * values + 0.5 .* cov * g +
+                 (cov * (I / (init_std)^2)) * init_mean
+        else  # Compute Newton-Raphson step
+            inv_H = inv(H)
+            step = (inv_H * g) .* step_size
+            mu = values .- step
+            cov = -inv_H * (2 * step_size)
+        end
         # Sample from multi-variate Gaussian centered at updated location
-        mu = values .- step
-        cov = -inv_H * (2 * step_size)
         new_values = mvnormal(mu, cov)
         fwd_weight += logpdf(mvnormal, new_values, mu, cov)
 
@@ -133,7 +150,7 @@ the new trace and incremental importance weight.
             subchoices = TrajectoryChoiceMap(reshape(new_values, D, :))
         elseif subsel isa HierarchicalSelection
             new_trajectory = subtr.trajectory[:, 2:end-1]
-            new_trajectory[:, idxs.-1] = reshape(new_values, D, :)
+            new_trajectory[:, idxs] = reshape(new_values, D, :)
             subchoices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
         end
         if isnothing(addr)
@@ -160,10 +177,26 @@ the new trace and incremental importance weight.
 
         # Evaluate backward proposal probability
         new_values, g, H = _nmc_extract_values_grads_hessian(subtr, idxs)
-        inv_H = inv(H)
-        step = (inv_H * g) .* step_size
-        mu = new_values .- step
-        cov = -inv_H * (2 * step_size)
+        # Decide whether to target initial proposal distribution
+        if target_init == :backward # Adjust to match initial proposal
+            start, stop = subtr.args.start, subtr.args.stop
+            n_points = subtr.args.n_points
+            delta = norm(stop .- start) / (n_points - 1)
+            # Compute initial proposal distribution
+            init_mean = reduce(hcat, LinRange(start, stop, n_points))
+            init_mean = vec(init_mean[:, idxs])
+            init_std = delta / (2 * weight_init)
+            # Compute the product of the Gaussians
+            orig_inv_cov = -H ./ (2 * step_size)
+            cov = inv(orig_inv_cov + I / (init_std)^2)
+            mu = cov * orig_inv_cov * new_values + 0.5 .* cov * g +
+                 (cov * (I / (init_std)^2)) * init_mean
+        else # Standard NMC proposal
+            inv_H = inv(H)
+            step = (inv_H * g) .* step_size
+            mu = new_values .- step
+            cov = -inv_H * (2 * step_size)
+        end
         bwd_weight += logpdf(mvnormal, prev_values, mu, cov)
     end
 
@@ -230,7 +263,7 @@ function nmc_multiple_try(
         new_choices = TrajectoryChoiceMap(reshape(new_values, D, :))
     elseif selection isa HierarchicalSelection
         new_trajectory = trace.trajectory[:, 2:end-1]
-        new_trajectory[:, idxs.-1] = reshape(new_values, D, :)
+        new_trajectory[:, idxs] = reshape(new_values, D, :)
         new_choices = TrajectoryChoiceMap(new_trajectory, idxs.-1)
     end
     new_trace, _, _, _ = update(trace, new_choices)

@@ -48,8 +48,13 @@ function Gen.simulate(gen_fn::SMCTrajectoryGF{D}, args::Tuple) where {D}
     pf = pf_initialize(target_fn, args, EmptyChoiceMap(), n_particles)
     # Perform NMC and ULA iterations
     selection = AllSelection()
-    pf_move_reweight!(pf, nmc_reweight, (selection,), gen_fn.n_nmc_iters;
-                      step_size=gen_fn.nmc_step_size)
+    weight_init = 2.0
+    for t in 1:gen_fn.n_nmc_iters
+        pf_move_reweight!(pf, nmc_reweight, (selection,);
+                          step_size=gen_fn.nmc_step_size,
+                          target_init=:backward, weight_init)
+        weight_init *= 0.5
+    end
     pf_move_reweight!(pf, ula_reweight, (selection, gen_fn.ula_step_size), 
                       gen_fn.n_ula_iters)
     # Estimate log normalizing constant by taking average particle weight
@@ -84,8 +89,13 @@ function Gen.generate(
     pf = pf_initialize(target_fn, args, EmptyChoiceMap(), n_particles)
     # Perform NMC and ULA iterations
     selection = AllSelection()
-    pf_move_reweight!(pf, nmc_reweight, (selection,), gen_fn.n_nmc_iters;
-                      step_size=gen_fn.nmc_step_size)
+    weight_init = 2.0
+    for _ in 1:gen_fn.n_nmc_iters
+        pf_move_reweight!(pf, nmc_reweight, (selection,);
+                          step_size=gen_fn.nmc_step_size,
+                          target_init=:backward, weight_init)
+        weight_init *= 0.5 # Gradually adjust backward kernel
+    end
     pf_move_reweight!(pf, ula_reweight, (selection, gen_fn.ula_step_size), 
                       gen_fn.n_ula_iters)
     # Estimate log normalizing constant by taking average particle weight
@@ -121,18 +131,20 @@ function Gen.update(
             ula_reweight(bwd_trace, selection, gen_fn.ula_step_size)
         bwd_weight += inc_weight
     end
+    weight_init = 2.0 * 0.5 ^ (gen_fn.n_nmc_iters - 1)
     for _ in gen_fn.n_nmc_iters # Apply backward NMC kernels
         bwd_trace, inc_weight =
-            nmc_reweight(bwd_trace, selection; step_size=gen_fn.nmc_step_size)
+            nmc_reweight(bwd_trace, selection; step_size=gen_fn.nmc_step_size,
+                         target_init=:forward, weight_init)
         bwd_weight += inc_weight
+        weight_init /= 0.5 # Gradually change backward kernel
     end
     # Evaluate probability of sampling trace under initial proposal
     n_points = new_chosen_trace.args.n_points
-    n_elements = D * (n_points - 2)
     start, stop = new_chosen_trace.args.start, new_chosen_trace.args.stop
     delta = norm(stop .- start) / (n_points - 1)
     mu = vec(reduce(hcat, LinRange(start, stop, n_points)[2:end-1]))
-    values = vec(new_chosen_trace.trajectory[:, 2:end-1])
+    values = vec(bwd_trace.trajectory[:, 2:end-1])
     init_prop_weight = logpdf(broadcasted_normal, values, mu, delta / 2)
     # Compute importance weight for newly chosen trace
     bwd_weight += init_prop_weight - get_score(bwd_trace)
@@ -147,11 +159,16 @@ function Gen.update(
         pf = pf_initialize(target_fn, args, EmptyChoiceMap(), n_particles)
         # Perform NMC and ULA iterations
         selection = AllSelection()
-        pf_move_reweight!(pf, nmc_reweight, (selection,), gen_fn.n_nmc_iters;
-                          step_size=gen_fn.nmc_step_size)
+        weight_init = 2.0
+        for _ in 1:gen_fn.n_nmc_iters
+            pf_move_reweight!(pf, nmc_reweight, (selection,);
+                              step_size=gen_fn.nmc_step_size,
+                              target_init=:backward, weight_init)
+            weight_init *= 0.5 # Gradually adjust backward kernel
+        end
         pf_move_reweight!(pf, ula_reweight, (selection, gen_fn.ula_step_size), 
                           gen_fn.n_ula_iters)
-        new_w_sum = logsumexp(pf.log_weights)
+        new_w_sum = exp(logsumexp(pf.log_weights))
     end
     # Update estimate of log normalizing constant and normalized log probability
     new_w_sum += exp(new_chosen_weight)
