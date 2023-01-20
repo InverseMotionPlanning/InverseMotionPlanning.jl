@@ -1,6 +1,8 @@
 import GenParticleFilters:
     ParticleFilterView, get_log_norm_weights, get_norm_weights
 
+export pf_replicate!
+
 "Sample from the standard Gumbel distribution."
 function randgumbel()
     return -log(-log(rand()))
@@ -97,4 +99,46 @@ function subtrace_selections(
     trace::T, selection::Selection, subtrace_type::Type{T}
 ) where {T <: Trace}
     return ((nothing, trace, selection),)
+end
+
+# Stratified initialization for particle filters
+function GenParticleFilters.pf_initialize(
+    model::GenerativeFunction{T,U}, model_args::Tuple,
+    observations::AbstractVector{<:ChoiceMap}, n_particles::Int,
+    dynamic::Bool=false
+) where {T,U}
+    traces = Vector{U}(undef, n_particles)
+    log_weights = Vector{Float64}(undef, n_particles)
+    obs_idx = 1
+    for i=1:n_particles
+        constraints = observations[obs_idx]
+        (traces[i], log_weights[i]) = generate(model, model_args, constraints)
+        obs_idx = mod(obs_idx, length(observations)) + 1
+    end
+    return dynamic ?
+        ParticleFilterState{Trace}(traces, Vector{Trace}(undef, n_particles),
+                               log_weights, 0., collect(1:n_particles)) :
+        ParticleFilterState{U}(traces, Vector{U}(undef, n_particles),
+                               log_weights, 0., collect(1:n_particles))
+end
+
+"""
+    pf_replicate!(state::ParticleFilterState, K::Int)
+    pf_replicate!(state::ParticleFilterState, K::Int, idxs)
+
+Expand particle filter by replicating each particle `K` times. If `idxs` is 
+specified, only those particles at the specified indices are replicated, 
+and other particles are forgotten.
+"""
+function pf_replicate!(state::ParticleFilterState{U}, K::Int,
+                       idxs=eachindex(state.traces)) where {U}
+    state.traces = repeat(view(state.traces, idxs), K)
+    state.log_weights = repeat(view(state.log_weights, idxs), K)
+    state.parents = repeat(view(state.parents, idxs), K)
+    if all(isassigned(state.new_traces, i) for i in idxs)
+        state.new_traces = repeat(view(state.new_traces, idxs), K)
+    else
+        state.new_traces = Vector{U}(undef, length(idxs) * K)
+    end
+    return state
 end
