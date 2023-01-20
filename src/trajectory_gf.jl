@@ -162,8 +162,19 @@ function Gen.project(trace::BoltzmannTrajectoryTrace, selection::Selection)
     error("Not implemented.")
 end
 
-function Gen.project(trace::BoltzmannTrajectoryTrace, selection::EmptySelection)
-    0.0
+function Gen.project(trace::BoltzmannTrajectoryTrace, ::EmptySelection)
+    # Evaluate probability of full trajectory under initial Gaussian proposal
+    n_points = trace.args.n_points
+    start, stop = trace.args.start, trace.args.stop
+    mu = vec(reduce(hcat, LinRange(start, stop, n_points)[2:end-1]))
+    delta = norm(stop .- start) / (n_points - 1)
+    values = vec(view(trace.trajectory, :, 2:n_points-1))
+    prop_weight = logpdf(broadcasted_normal, values, mu, delta / 2)
+    return get_score(trace) - prop_weight
+end
+
+function Gen.project(trace::BoltzmannTrajectoryTrace, ::AllSelection)
+    return get_score(trace)
 end
 
 function Gen.generate(
