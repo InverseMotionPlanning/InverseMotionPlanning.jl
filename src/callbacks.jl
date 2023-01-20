@@ -58,8 +58,9 @@ function PlotCallback(axis=nothing, observables=Dict(); kwargs...)
         :trajectory_color => :red,
         :gradient_color => :blue,
         :gradient_scale => 0.05,
+        :weight_as_alpha => true,
+        :alpha_factor => 0.5,
         :sleep => 0.01,
-        :trajectory_addr => nothing
     )
     options = merge!(defaults, Dict(kwargs...))
     return PlotCallback(axis, options, observables)
@@ -102,8 +103,10 @@ function (cb::PlotCallback)(pf_state::ParticleFilterState)
     norm_weights = get_norm_weights(pf_state, true)
     for (idx, (trace, weight)) in enumerate(zip(traces, norm_weights))
         # Update alpha value
-        name = observable_name("trace_alpha", nothing, idx)
-        cb.observables[name][] = weight
+        if cb.options[:weight_as_alpha]
+            name = observable_name("trace_alpha", nothing, idx)
+            cb.observables[name][] = weight^cb.options[:alpha_factor]
+        end
         # Iterate over trajectory subtraces
         subtrace_iter = subtrace_selections(trace, selectall(), TrajectoryTrace)
         for (addr, tr, _) in subtrace_iter
@@ -148,7 +151,9 @@ function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothin
     norm_weights = get_norm_weights(pf_state, true)
     for (idx, (trace, weight)) in enumerate(zip(traces, norm_weights))
         # Plot trajectories in trace
-        init_plot_trajectory!(cb, trace, idx, alpha=weight)
+        alpha = cb.options[:weight_as_alpha] ? weight : 1.0
+        alpha ^= cb.options[:alpha_factor]
+        init_plot_trajectory!(cb, trace, idx, alpha=alpha)
     end
 end
 
