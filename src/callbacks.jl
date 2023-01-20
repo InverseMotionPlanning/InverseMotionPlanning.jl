@@ -55,11 +55,14 @@ function PlotCallback(axis=nothing, observables=Dict(); kwargs...)
         :show_scene => true,
         :show_trajectory => true,
         :show_gradients => false,
+        :show_observations => true,
         :trajectory_color => :red,
+        :observations_color => :black,
         :gradient_color => :blue,
         :gradient_scale => 0.05,
         :weight_as_alpha => true,
         :alpha_factor => 0.5,
+        :observations_addr => :observations,
         :sleep => 0.01,
     )
     options = merge!(defaults, Dict(kwargs...))
@@ -71,6 +74,17 @@ function (cb::PlotCallback)(trace::Trace, metadata)
     if isnothing(cb.axis)
         init_plot!(cb, trace)
         return nothing
+    end
+    # Update observations
+    if cb.options[:show_observations] && !(trace isa TrajectoryTrace)
+        choices = get_choices(trace)
+        obs_addr = get(cb.options, :observations_addr, :observations)
+        observations = trace[obs_addr]
+        if observations isa Vector
+            observations = reduce(hcat, observations)
+        end
+        name = observable_name("observations", obs_addr)
+        cb.observables[name][] = observations
     end
     # Iterate over trajectory subtraces
     subtrace_iter = subtrace_selections(trace, selectall(), TrajectoryTrace)
@@ -97,6 +111,18 @@ function (cb::PlotCallback)(pf_state::ParticleFilterState)
     if isnothing(cb.axis)
         init_plot!(cb, pf_state)
         return nothing
+    end
+    # Update observations
+    trace = get_traces(pf_state)[1]
+    if cb.options[:show_observations] && !(trace isa TrajectoryTrace)
+        choices = get_choices(trace)
+        obs_addr = get(cb.options, :observations_addr, :observations)
+        observations = trace[obs_addr]
+        if observations isa Vector
+            observations = reduce(hcat, observations)
+        end
+        name = observable_name("observations", obs_addr)
+        cb.observables[name][] = observations
     end
     # Iterate over each trace/particle in particle filter
     traces = get_traces(pf_state)
@@ -138,6 +164,8 @@ function init_plot!(cb::PlotCallback, trace::Trace, axis=nothing)
     init_plot_scene!(cb, scene, axis)
     # Plot trajectories in trace
     init_plot_trajectory!(cb, trace)
+    # Plot observations in trace
+    init_plot_observations!(cb, trace)
 end
 
 function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothing)
@@ -155,6 +183,8 @@ function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothin
         alpha ^= cb.options[:alpha_factor]
         init_plot_trajectory!(cb, trace, idx, alpha=alpha)
     end
+    # Plot observations in first trace
+    init_plot_observations!(cb, get_traces(pf_state)[1])
 end
 
 function init_plot_scene!(cb::PlotCallback, scene::Scene, axis=nothing)
@@ -193,9 +223,7 @@ function init_plot_trajectory!(
     cb::PlotCallback, trace::Trace, idx=nothing;
     alpha=1.0
 )
-    if !cb.options[:show_trajectory]
-        return
-    end
+    cb.options[:show_trajectory] || return
     # Construct observable for transparency / alpha value
     alpha = Observable(alpha)
     cb.observables[observable_name("trace_alpha", nothing, idx)] = alpha
@@ -234,6 +262,27 @@ function init_plot_trajectory!(
             end
         end
     end
+end
+
+function init_plot_observations!(
+    cb::PlotCallback, trace::Trace
+)
+    # Check that observations and plotting flags are present
+    trace isa TrajectoryTrace && return
+    cb.options[:show_observations] || return
+    choices = get_choices(trace)
+    obs_addr = get(cb.options, :observations_addr, :observations)
+    # Plot observations
+    observations = trace[obs_addr]
+    if observations isa Vector
+        observations = reduce(hcat, observations)
+    end
+    observations_obs = Observable(observations)
+    name = observable_name("observations", obs_addr)
+    cb.observables[name] = observations_obs
+    color = cb.options[:observations_color]
+    scatter!(cb.axis, observations_obs, color=color,
+             marker=:xcross, markersize=20)
 end
 
 "Construct a name as a `Symbol` for an observable."

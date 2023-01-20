@@ -59,7 +59,7 @@ end
 
 function get_subtrace(trace::Gen.DynamicDSLTrace, addr::Pair)
     key, subaddr = addr
-    return get_subtrace(get_subtrace(trace, key), addr)
+    return get_subtrace(get_subtrace(trace, key), subaddr)
 end
 
 function get_subtrace(trace::Gen.StaticIRTrace, addr)
@@ -68,7 +68,16 @@ end
 
 function get_subtrace(trace::Gen.StaticIRTrace, addr::Pair)
     key, subaddr = addr
-    return get_subtrace(get_subtrace(trace, key), addr)
+    return get_subtrace(get_subtrace(trace, key), subaddr)
+end
+
+function get_subtrace(trace::Gen.VectorTrace, addr::Int)
+    return trace.subtraces[addr]
+end
+
+function get_subtrace(trace::Gen.VectorTrace, addr::Pair)
+    key, subaddr = addr
+    return get_subtrace(get_subtrace(trace, key), subaddr)
 end
 
 """
