@@ -119,7 +119,7 @@ obs_choices = [choicemap((:observations => t, v)) for (t, v) in get_values_shall
 N, K = 30, 10
 args = (0, scene, start, n_points, d_safe, obs_mult, alpha)
 strata = [choicemap((:goal, :A)), choicemap((:goal, :B)), choicemap((:goal, :C))] 
-pf = pf_initialize(goal_trajectory_model, args, strata, N)
+pf = pf_initialize(goal_trajectory_model, args, choicemap(), strata, N)
 
 # Replicate each particle K times
 pf_replicate!(pf, K)

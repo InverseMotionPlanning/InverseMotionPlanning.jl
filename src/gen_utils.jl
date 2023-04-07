@@ -12,7 +12,7 @@ end
 function randboltzmann(elements, log_weights)
     chosen, chosen_weight = nothing, -Inf
     # Gumbel-max reservoir sampling
-    for (elem, weight) in zip(elements, log_weights) 
+    for (elem, weight) in zip(elements, log_weights)
         weight += randgumbel()
         if weight > chosen_weight
             chosen = elem
@@ -27,12 +27,8 @@ function Gen.get_log_weights(state::ParticleFilterView, replace_nan::Bool)
         replace(state.log_weights, NaN => -Inf) : state.log_weights
 end
 
-function get_log_norm_weights(state::ParticleFilterView, replace_nan::Bool)
+function GenParticleFilters.get_log_norm_weights(state::ParticleFilterView, replace_nan::Bool)
     return GenParticleFilters.lognorm(get_log_weights(state, replace_nan))
-end
-
-function get_norm_weights(state::ParticleFilterView, replace_nan::Bool)
-    return exp.(get_log_norm_weights(state, replace_nan))
 end
 
 """
@@ -41,8 +37,9 @@ end
 Return the vector of normalized weights for the current state,
 one for each particle.
 """
-get_norm_weights(state::ParticleFilterView) = exp.(get_log_norm_weights(state))
-
+function get_norm_weights(state::ParticleFilterView, replace_nan::Bool)
+    return exp.(get_log_norm_weights(state, replace_nan))
+end
 
 "Given a hierarchical trace, return the subtrace located at `addr`."
 function get_subtrace(trace::Trace, addr)
@@ -81,14 +78,14 @@ function get_subtrace(trace::Gen.VectorTrace, addr::Pair)
 end
 
 """
-Given a `selection`, decompose a `trace` into an iterable over corresponding 
+Given a `selection`, decompose a `trace` into an iterable over corresponding
 addresses, subtraces, and subselections.
 """
 function subtrace_selections(
     trace::Trace, selection::Selection, subtrace_type::Type{<:Trace}
-)   
+)
     base_iter = selection isa HierarchicalSelection ?
-        get_subselections(selection) : 
+        get_subselections(selection) :
         get_submaps_shallow(get_selected(get_choices(trace), selection))
     map_iter = Iterators.map(base_iter) do (key, submap_or_selection)
         subtrace = get_subtrace(trace, key)
@@ -108,46 +105,4 @@ function subtrace_selections(
     trace::T, selection::Selection, subtrace_type::Type{T}
 ) where {T <: Trace}
     return ((nothing, trace, selection),)
-end
-
-# Stratified initialization for particle filters
-function GenParticleFilters.pf_initialize(
-    model::GenerativeFunction{T,U}, model_args::Tuple,
-    observations::AbstractVector{<:ChoiceMap}, n_particles::Int,
-    dynamic::Bool=false
-) where {T,U}
-    traces = Vector{U}(undef, n_particles)
-    log_weights = Vector{Float64}(undef, n_particles)
-    obs_idx = 1
-    for i=1:n_particles
-        constraints = observations[obs_idx]
-        (traces[i], log_weights[i]) = generate(model, model_args, constraints)
-        obs_idx = mod(obs_idx, length(observations)) + 1
-    end
-    return dynamic ?
-        ParticleFilterState{Trace}(traces, Vector{Trace}(undef, n_particles),
-                               log_weights, 0., collect(1:n_particles)) :
-        ParticleFilterState{U}(traces, Vector{U}(undef, n_particles),
-                               log_weights, 0., collect(1:n_particles))
-end
-
-"""
-    pf_replicate!(state::ParticleFilterState, K::Int)
-    pf_replicate!(state::ParticleFilterState, K::Int, idxs)
-
-Expand particle filter by replicating each particle `K` times. If `idxs` is 
-specified, only those particles at the specified indices are replicated, 
-and other particles are forgotten.
-"""
-function pf_replicate!(state::ParticleFilterState{U}, K::Int,
-                       idxs=eachindex(state.traces)) where {U}
-    state.traces = repeat(view(state.traces, idxs), K)
-    state.log_weights = repeat(view(state.log_weights, idxs), K)
-    state.parents = repeat(view(state.parents, idxs), K)
-    if all(isassigned(state.new_traces, i) for i in idxs)
-        state.new_traces = repeat(view(state.new_traces, idxs), K)
-    else
-        state.new_traces = Vector{U}(undef, length(idxs) * K)
-    end
-    return state
 end
