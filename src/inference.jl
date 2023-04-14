@@ -319,6 +319,7 @@ function _nmc_extract_values_grads_hessian(
 end
 
 # Hybrid NMC + MALA kernel
+
 @pkern function nmc_mala(
     trace, selection = AllSelection();
     nmc_steps::Int=1, mala_steps::Int=1,
@@ -340,6 +341,23 @@ end
     return trace, accepted
 end
 
+@doc """
+    new_trace, accept = nmc_mala(trace, selection; kwargs...)
+
+Hybrid Newtonian Monte Carlo (NMC) + Metropolis-adjusted Langevin algorithm
+(MALA) kernel.
+
+# Keyword Arguments
+
+- `nmc_steps::Int=1`: Number of NMC steps to take.
+- `mala_steps::Int=1`: Number of MALA steps to take.
+- `nmc_tries::Int=1`: Number of NMC samples to draw at each step.
+- `nmc_step_size::Real=1.0`: Step size for NMC.
+- `mala_step_size::Real=0.002`: Step size for MALA.
+- `nmc_step_sizes::Vector{Real}`: Vector of NMC step sizes.
+- `mala_step_sizes::Vector{Real}`: Vector of MALA step sizes.
+""" nmc_mala
+
 # Hybrid NMC + HMC kernel
 @pkern function nhmc(
     trace, selection = AllSelection();
@@ -360,6 +378,22 @@ end
     accepted = trace !== init_trace
     return trace, accepted
 end
+
+@doc """
+    new_trace, accept = nhmc(trace, selection; kwargs...)
+
+Hybrid Newtonian Monte Carlo (NMC) + Hamiltonian Monte Carlo (HMC) kernel.
+
+# Keyword Arguments
+
+- `nmc_steps::Int=1`: Number of NMC steps to take.
+- `hmc_steps::Int=1`: Number of HMC steps to take.
+- `nmc_tries::Int=1`: Number of NMC samples to draw at each step.
+- `nmc_step_size::Real=1.0`: Step size for NMC.
+- `hmc_eps::Real=0.01`: Step size for HMC.
+- `hmc_L::Int=20`: Number of leapfrog steps for HMC.
+- `nmc_step_sizes::Vector{Real}`: Vector of NMC step sizes.
+""" nhmc
 
 ## MCMC Samplers ##
 
