@@ -23,6 +23,6 @@ docs/site/
 # environment.
 Manifest.toml
 
-# .vscode/
-# */mcmc_comparison.mp4
+.vscode/
+*/mcmc_comparison.mp4
 .DS_Store
