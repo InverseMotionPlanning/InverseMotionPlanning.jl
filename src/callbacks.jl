@@ -63,6 +63,10 @@ function PlotCallback(axis=nothing, observables=Dict(); kwargs...)
         :weight_as_alpha => true,
         :alpha_factor => 0.5,
         :observations_addr => :observations,
+        :show_timestep => true,
+        :save_image => false,
+        :image_path_prefix => "image_",
+        :timestep_arg_index => 1,
         :sleep => 0.01,
     )
     options = merge!(defaults, Dict(kwargs...))
@@ -73,11 +77,9 @@ function (cb::PlotCallback)(trace::Trace, metadata)
     # Construct figure, axis and observables if non-existent
     if isnothing(cb.axis)
         init_plot!(cb, trace)
-        return nothing
     end
     # Update observations
     if cb.options[:show_observations] && !(trace isa TrajectoryTrace)
-        choices = get_choices(trace)
         obs_addr = get(cb.options, :observations_addr, :observations)
         observations = trace[obs_addr]
         if observations isa Vector
@@ -100,6 +102,14 @@ function (cb::PlotCallback)(trace::Trace, metadata)
             end
         end
     end
+    # Update count
+    cb.observables[:count][] += 1
+    # Save image
+    if cb.options[:save_image]
+        count = cb.observables[:count][]
+        path = cb.options[:image_path_prefix] * string(count) * ".png"
+        save(path, cb.axis.parent)
+    end
     # Sleep for the specified time
     if cb.options[:sleep] > 0
         sleep(cb.options[:sleep])
@@ -110,12 +120,10 @@ function (cb::PlotCallback)(pf_state::ParticleFilterState)
     # Construct figure, axis and observables if non-existent
     if isnothing(cb.axis)
         init_plot!(cb, pf_state)
-        return nothing
     end
     # Update observations
     trace = get_traces(pf_state)[1]
     if cb.options[:show_observations] && !(trace isa TrajectoryTrace)
-        choices = get_choices(trace)
         obs_addr = get(cb.options, :observations_addr, :observations)
         observations = trace[obs_addr]
         if observations isa Vector
@@ -150,6 +158,21 @@ function (cb::PlotCallback)(pf_state::ParticleFilterState)
             end
         end
     end
+    # Update count
+    cb.observables[:count][] += 1
+    # Update timestep
+    timestep_arg_idx = get(cb.options, :timestep_arg_idx, 1)
+    cb.observables[:timestep][] = get_args(trace)[timestep_arg_idx]
+    # Show timestep in caption
+    if cb.options[:show_timestep]
+        cb.axis.xlabel = "Timestep: " * string(cb.observables[:timestep][])
+    end    
+    # Save image
+    if cb.options[:save_image]
+        timestep = cb.observables[:timestep][]
+        path = cb.options[:image_path_prefix] * string(timestep) * ".png"
+        save(path, cb.axis.parent)
+    end    
     # Sleep for the specified time
     if cb.options[:sleep] > 0
         sleep(cb.options[:sleep])
@@ -166,6 +189,8 @@ function init_plot!(cb::PlotCallback, trace::Trace, axis=nothing)
     init_plot_trajectory!(cb, trace)
     # Plot observations in trace
     init_plot_observations!(cb, trace)
+    # Set iteration / timestep count
+    cb.observables[:count] = Observable(0)
 end
 
 function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothing)
@@ -185,6 +210,15 @@ function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothin
     end
     # Plot observations in first trace
     init_plot_observations!(cb, get_traces(pf_state)[1])
+    # Set iteration count
+    cb.observables[:count] = Observable(0)
+    # Set timestep observable
+    timestep_arg_idx = get(cb.options, :timestep_arg_idx, 1)
+    cb.observables[:timestep] = Observable(trace_args[timestep_arg_idx])
+    # Show timestep in caption
+    if cb.options[:show_timestep]
+        cb.axis.xlabel = "Timestep: " * string(cb.observables[:timestep][])
+    end
 end
 
 function init_plot_scene!(cb::PlotCallback, scene::Scene, axis=nothing)

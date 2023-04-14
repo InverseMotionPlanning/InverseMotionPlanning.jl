@@ -14,7 +14,7 @@ import Base: @kwdef
 
 import GLMakie:
     GLMakie, Makie, Axis, Axis3, Figure, Observable, @lift,
-    plot!, scatter!, lines!, arrows!
+    plot!, scatter!, lines!, arrows!, save
 import MeshViz
 
 include("geometry.jl")
