@@ -28,7 +28,7 @@ tr, w = generate(boltzmann_trajectory_2D, args)
 callback = Returns(nothing) # Empty callback
 callback = PrintCallback() # Printing callback
 callback = PlotCallback(sleep=0.001, show_gradients=false) # Plotting callback
-callback = PrintPlotStoreCallback(sleep=0.001, show_gradients=false, accepted=true) # Combined callback
+callback = PrintPlotCallback(sleep=0.001, show_gradients=false, accepted=true) # Combined callback
 callback = StoreTracesCallback()
 
 # Run callback on initial trace
