@@ -8,19 +8,20 @@ import GLMakie: GLMakie, Makie, Axis, Figure, Observable, @lift
 
 # Define trajectory generative function
 smc_trajectory_gf = SMCTrajectoryGF{2}(
-    n_particles=50,
+    n_particles=100,
     kernel_kwargs=Dict(
-        :unmc_step_schedule => [0.2],
-        :nmc_step_schedule => [0.2, 0.1, 0.05],
+        :unmc_step_schedule => [0.02],
+        :nmc_step_schedule => [0.05, 0.05, 0.02, 0.02, 0.01, 0.01, 0.005, 0.005],
         :n_ula_iters => 0,
         :n_mala_iters => 1,
+        :init_alpha => 1.0
     ),
     fast_update=true
 )
 
 # Define observation model
 @gen function observation_model((grad)(points::AbstractArray{<:Real}))
-    observed = [{t} ~ broadcasted_normal(points[:, t], 0.1)
+    observed = [{t} ~ broadcasted_normal(points[:, t], 0.2)
                 for t in axes(points, 2)]
     return reduce(hcat, observed; init=zeros(2, 0))
 end
@@ -62,7 +63,7 @@ n_obs = 10
 start = [0.5, 0.5]
 n_points = 21
 d_safe = 0.2
-obs_mult = 1.0
+obs_mult = 5.0
 alpha = 20.0
 args = (n_obs, scene, start, n_points, d_safe, obs_mult, alpha)
 
@@ -72,7 +73,7 @@ callback = PlotCallback(sleep=0.001)
 callback = PrintPlotCallback(sleep=0.001, accepted=true)
 
 # Generate initial trace
-tr, w = generate(goal_trajectory_model, args, choicemap(:goal => :A))
+@time tr, w = generate(goal_trajectory_model, args, choicemap(:goal => :A))
 InverseTAMP.get_subtrace(tr, :trajectory).log_z_est
 
 # Run callback on initial trace
@@ -84,7 +85,7 @@ tr = mala_sampler(tr, 100; callback, selection, tau=0.002)
 tr = nmc_sampler(tr, 100; callback, selection, step_size=0.05)
 tr = nmc_mala_sampler(tr, 100; callback, selection,
                       mala_steps=5, mala_step_size=0.002, 
-                      nmc_tries=1, nmc_steps=1, nmc_step_size=0.2)
+                      nmc_tries=1, nmc_steps=1, nmc_step_size=0.05)
 
 ## Goal inference via particle filtering
 
@@ -95,7 +96,7 @@ tr = nmc_mala_sampler(tr, 100; callback, selection,
     n_points = get_args(trace)[4]
     if 1 < t < n_points # Only propose for non-endpoints
         observed_point = obs[:observations => t]
-        {:trajectory => t-1} ~ broadcasted_normal(observed_point, 0.1)
+        {:trajectory => t-1} ~ broadcasted_normal(observed_point, 0.2)
     end
 end
 
@@ -105,13 +106,55 @@ end
     if 1 < t < n_points # Only propose for non-endpoints
         # Guess that point was close to subsequent point
         next_point = trace[:trajectory][:, t+1]
-        {:trajectory => t-1} ~ broadcasted_normal(next_point, 0.2)
+        {:trajectory => t-1} ~ broadcasted_normal(next_point, 0.5)
     end
+end
+
+# Define particle filter
+function smc_imp(
+    scene::Scene,
+    obs_trajectory::AbstractMatrix{Float64};
+    start = [0.5, 0.5], n_points = 21,
+    d_safe = 0.2, obs_mult = 5.0, alpha = 20.0,
+    N = 30, K = 10, n_init_iters = 10,
+    callback = Returns(nothing)
+)
+    # Convert observed trajectory to choicemaps
+    obs_choices = [choicemap((:observations => t, collect(v)))
+                   for (t, v) in enumerate(eachcol(obs_trajectory))]
+    # Stratified initialization of particle filter
+    args = (0, scene, start, n_points, d_safe, obs_mult, alpha)
+    strata = [choicemap((:goal, name)) for name in keys(scene.regions)] 
+    pf = pf_initialize(goal_trajectory_model, args, choicemap(), strata, N);    
+    # Replicate each particle K times
+    pf_replicate!(pf, K)    
+    # Create diversity via rejuvenation kernels
+    pf_move_accept!(pf, nmc_mala, (select(:trajectory),), n_init_iters;
+                    nmc_step_size=0.05);
+    callback(pf)
+    # Run particle filter
+    argdiffs = (UnknownChange(), ntuple(Returns(NoChange()), length(args)-1)...)
+    for (t, obs) in enumerate(obs_choices)
+        # Update filter state with new observation
+        obs = obs_choices[t]
+        args = (t, scene, start, n_points, d_safe, obs_mult, alpha)
+        # pf_update!(pf, args, argdiffs, obs)
+        pf_update!(pf, args, argdiffs, obs,
+                   trajectory_fwd_proposal, (t, obs),
+                   trajectory_bwd_proposal, (t, obs))
+        # Rejuvenate particles
+        pf_move_accept!(pf, nmc_mala, (select(:trajectory),), 1;
+                        nmc_step_size=0.02)
+        callback(pf)
+    end
+    # Return particle filter
+    return pf
 end
 
 # Generate test trajectory
 test_args = (n_points, start, [5.5, 5.5], scene, d_safe, obs_mult, alpha)
-test_tr = sample_trajectory(2, test_args, verbose=true, n_optim_iters=5, return_best=true)
+test_tr = sample_trajectory(2, test_args, verbose=true, n_optim_iters=5,
+                            return_best=true, callback=PlotCallback())
 
 # Visualize test trajectory
 callback = PlotCallback()
@@ -122,40 +165,15 @@ test_trajectory = test_tr[]
 obs_choices = [choicemap((:observations => t, collect(v)))
                for (t, v) in enumerate(eachcol(test_trajectory))]
 
-# Stratified initialization of particle filter
-N, K = 30, 10
-args = (0, scene, start, n_points, d_safe, obs_mult, alpha)
-strata = [choicemap((:goal, :A)), choicemap((:goal, :B)), choicemap((:goal, :C))] 
-pf = pf_initialize(goal_trajectory_model, args, choicemap(), strata, N)
+# Define plotting and logging callback
+callback = CombinedCallback(
+    ParticleFilterStatsCallback(),
+    PlotCallback(sleep=0.001, weight_as_alpha=true, alpha_factor=0.5)
+)
 
-# Replicate each particle K times
-pf_replicate!(pf, K)
+# Run particle filter on test trajectory
+pf = smc_imp(scene, test_trajectory, callback=callback)
 
-# Create diversity via rejuvenation kernels
-pf_move_accept!(pf, nmc_mala, (select(:trajectory),), 5; nmc_step_size=0.05)
-
-# Plot initial set of traces
-callback = PlotCallback(sleep=0.001, weight_as_alpha=true, alpha_factor=0.5)
-callback(pf)
-
-# Run particle filter
-argdiffs = (UnknownChange(), ntuple(Returns(NoChange()), length(args)-1)...)
-for (t, obs) in enumerate(obs_choices)
-    # Rejuvenate particles
-    pf_move_accept!(pf, nmc_mala, (select(:trajectory),), 1; nmc_step_size=0.05)
-    callback(pf)
-    # Update filter state with new observation
-    obs = obs_choices[t]
-    args = (t, scene, start, n_points, d_safe, obs_mult, alpha)
-    pf_update!(pf, args, argdiffs, obs,
-               trajectory_fwd_proposal, (t, obs),
-               trajectory_bwd_proposal, (t, obs))
-    callback(pf)
-end
-
-# Plot log probability of each goal
-weights = get_norm_weights(pf, true)
-traces = get_traces(pf)
-sum(w for (tr, w) in zip(traces, weights) if tr[:goal] == :A)
-sum(w for (tr, w) in zip(traces, weights) if tr[:goal] == :B)
-sum(w for (tr, w) in zip(traces, weights) if tr[:goal] == :C)
+# Get log probability of each goal region
+goal_probs = proportionmap(pf, :goal)
+display(goal_probs)
