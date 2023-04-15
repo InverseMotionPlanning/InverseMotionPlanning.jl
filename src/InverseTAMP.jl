@@ -27,5 +27,6 @@ include("smc_trajectory_gf.jl")
 include("inference.jl")
 include("callbacks.jl")
 include("analysis_utils.jl")
+include("baselines.jl")
 
 end
