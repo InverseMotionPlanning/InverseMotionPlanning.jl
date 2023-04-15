@@ -9,10 +9,8 @@ struct CombinedCallback{T <: Tuple}
     callbacks::T
 end
 
-CombinedCallback(callbacks::T) where {T <: Tuple} =
-    CombinedCallback{T}(callbacks)
-CombinedCallback(callbacks...) =
-    CombinedCallback(callbacks)
+CombinedCallback(callbacks::Any...) =
+    CombinedCallback{typeof(callbacks)}(callbacks)
 
 function (cb::CombinedCallback)(trace::Trace, accepted)
     for callback in cb.callbacks
