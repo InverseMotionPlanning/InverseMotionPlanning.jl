@@ -70,31 +70,81 @@ function smc_trajectory_fwd(
     mala_step_size::Float64 = 0.002,
     # MALA step size schedule
     mala_step_schedule = fill(mala_step_size, n_mala_iters),
+    # Initial alpha value for simulated annealing
+    init_alpha::Float64 = get_args(trace)[end],
     # How much to adjust reverse kernels towards initial proposal distribution
     weight_init::Float64 = 2.0,
     # Adjustment decay factor after each kernel application
     weight_init_decay::Float64 = 0.5,
 )
     weight = 0.0
+    # Compute alpha annealing schedule
+    n_total_iters = length(unmc_step_schedule) + length(ula_step_schedule) +
+                    length(nmc_step_schedule) + length(mala_step_schedule)
+    args = get_args(trace)
+    orig_alpha = args[end]
+    alpha_mult = orig_alpha == init_alpha ? 
+        1.0 : (orig_alpha / init_alpha) ^ (1/n_total_iters)
+    cur_alpha = init_alpha
+    argdiffs = (fill(NoChange(), 6)..., UnknownChange())
+    # Update trace to initial alpha value
+    if orig_alpha != init_alpha
+        trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                argdiffs, EmptyChoiceMap())
+        weight += w
+    end
     # Run UNMC kernels
     for step_size in unmc_step_schedule
         trace, w = nmc_reweight(trace, selection; step_size, weight_init,
                                 target_init=:backward)
         weight_init *= weight_init_decay # Gradually adjust reverse kernels
         weight += w
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha *= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
     end
     # Run ULA kernels
     for step_size in ula_step_schedule
         trace, w = ula_reweight(trace, selection, step_size)
         weight += w
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha *= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
     end
     # Run NMC kernels
     for step_size in nmc_step_schedule
         trace, _ = nmc(trace, selection; step_size)
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha *= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
     end
     # Run MALA kernels
     for step_size in mala_step_schedule
         trace, _ = mala(trace, selection, step_size)
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha *= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
+    end
+    # Update back to original alpha
+    if orig_alpha != init_alpha
+        trace, w, _, _ = update(trace, args, argdiffs, EmptyChoiceMap())
+        weight += w
     end
     return trace, weight
 end
@@ -126,22 +176,57 @@ function smc_trajectory_bwd(
     mala_step_size::Float64 = 0.002,
     # MALA step size schedule
     mala_step_schedule = fill(mala_step_size, n_mala_iters),
+    # Initial alpha value for simulated annealing
+    init_alpha::Float64 = get_args(trace)[end],
     # How much to adjust reverse kernels towards initial proposal distribution
     weight_init::Float64 = 2.0,
     # Adjustment decay factor after each kernel application
     weight_init_decay::Float64 = 0.5,
 )
     weight = 0.0
+    # Compute alpha annealing schedule
+    n_total_iters = length(unmc_step_schedule) + length(ula_step_schedule) +
+                    length(nmc_step_schedule) + length(mala_step_schedule)
+    args = get_args(trace)
+    orig_alpha = args[end]
+    alpha_mult = orig_alpha == init_alpha ? 
+        1.0 : (orig_alpha / init_alpha) ^ (1/n_total_iters)
+    cur_alpha = orig_alpha
+    argdiffs = (fill(NoChange(), 6)..., UnknownChange())
     # Run reverse MALA kernels
     for step_size in Iterators.reverse(mala_step_schedule)
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha /= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
+        # Run MALA kernel
         trace, _ = mala(trace, selection, step_size)
     end
     # Run reverse NMC kernels
     for step_size in Iterators.reverse(nmc_step_schedule)
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha /= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
+        # Run NMC kernel
         trace, _ = nmc(trace, selection; step_size)
     end
     # Run reverse ULA kernels 
     for step_size in Iterators.reverse(ula_step_schedule)
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha /= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
+        # Run ULA kernel
         trace, w = ula_reweight(trace, selection, step_size)
         weight += w
     end
@@ -149,9 +234,22 @@ function smc_trajectory_bwd(
     n_unmc_iters = length(unmc_step_schedule)
     weight_init *= weight_init_decay ^ (n_unmc_iters - 1)
     for step_size in Iterators.reverse(unmc_step_schedule)
+        # Anneal alpha
+        if orig_alpha != init_alpha
+            cur_alpha /= alpha_mult
+            trace, w, _, _ = update(trace, (args[1:end-1]..., cur_alpha),
+                                    argdiffs, EmptyChoiceMap())
+            weight += w
+        end
+        # Run UNMC kernel
         trace, w = nmc_reweight(trace, selection; step_size, weight_init,
                                 target_init=:forward)
         weight_init /= weight_init_decay # Gradually adjust reverse kernels
+        weight += w
+    end
+    # Update back to original alpha
+    if orig_alpha != init_alpha
+        trace, w, _, _ = update(trace, args, argdiffs, EmptyChoiceMap())
         weight += w
     end
     return trace, weight

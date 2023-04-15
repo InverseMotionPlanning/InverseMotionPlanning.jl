@@ -251,6 +251,39 @@ function Gen.update(
     return new_trace, weight, UnknownChange(), discard
 end
 
+# Specialized version for when only alpha is changed
+function Gen.update(
+    trace::BoltzmannTrajectoryTrace{D}, args::Tuple,
+    argdiffs::Tuple{fill(NoChange, 6)..., UnknownChange},
+    constraints::EmptyChoiceMap
+) where {D}
+    # Extract arguments
+    old_alpha = trace.args.alpha
+    args = BoltzmannTrajectoryArgs{Int, Scene{D, Float64}}(args)
+    new_alpha = args.alpha
+    n_points, start, stop, scene, d_safe, obs_mult, alpha = args
+    # Compute updated trajectory cost, score, and gradients
+    cost = trace.cost
+    score = -trace.cost * new_alpha
+    trajectory = trace.trajectory
+    trajectory_grads = trace.trajectory_grads / old_alpha * new_alpha
+    start_grad = trace.arg_grads.start * new_alpha / old_alpha
+    stop_grad = trace.arg_grads.stop * new_alpha / old_alpha
+    d_safe_grad = trace.arg_grads.d_safe * new_alpha / old_alpha
+    obs_mult_grad = trace.arg_grads.obs_mult * new_alpha / old_alpha
+    alpha_grad = trace.arg_grads.alpha
+    arg_grads = BoltzmannTrajectoryArgs{Nothing, Nothing}((
+        nothing, start_grad, stop_grad, nothing,
+        d_safe_grad, obs_mult_grad, alpha_grad
+    ))
+    # Construct new trace, incremental weight, and discarded choices
+    new_trace = BoltzmannTrajectoryTrace{D}(trace.gen_fn, args, trajectory,
+                                            arg_grads, trajectory_grads,
+                                            cost, score)
+    weight = new_trace.score - trace.score
+    return new_trace, weight, NoChange(), EmptyChoiceMap()
+end
+
 function Gen.choice_gradients(
     trace::BoltzmannTrajectoryTrace{D}, selection::Selection, 
     retgrad::Union{Nothing, AbstractMatrix}
@@ -333,7 +366,7 @@ function sample_trajectory(
     if verbose
         println("Running $n_mcmc_iters iterations of MCMC (NMC + MALA)...")
     end
-    argdiffs = map((_) -> UnknownChange(), args)
+    argdiffs = (fill(NoChange(), 6)..., UnknownChange())
     mult = (alpha / init_alpha) ^ (1 / n_mcmc_iters)
     cur_alpha = init_alpha
     for k in 1:n_mcmc_iters
