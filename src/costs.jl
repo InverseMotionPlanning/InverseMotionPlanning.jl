@@ -3,7 +3,11 @@ export obstacle_cost, smoothness_cost, trajectory_cost
 
 function obstacle_cost(p::AbstractVector, scene::Scene, d_safe::Real)
     obstacles = @ignore_derivatives possible_colliders(p, scene, d_safe)
+    # Compute signed distance to obstacles
     sd = signed_dist(p, ignore_derivatives(obstacles))::Float64
+    # Compute signed distance to scene limits
+    id = -signed_dist(p, scene.limits)::Float64
+    sd = min(sd, id)
     return max(d_safe-sd, 0.0)
 end
 

@@ -3,6 +3,8 @@ using InverseTAMP
 using LinearAlgebra
 using Meshes
 using Gen, GenParticleFilters
+using GLMakie
+using DelimitedFiles
 
 # Define obstacles
 TOY = [Box(Point(1, 1), Point(2, 2)) # simple two-obstacle toy setup 
@@ -58,6 +60,8 @@ scene = Scene{2}(
 
 # Visualize scene
 figure, axis, plot = sceneviz(scene)
+axis.aspect = DataAspect()
+axis.limits = (-1, 6, -1, 6)
 
 # Generate test trajectory
 start = [0.5, 0.5] # Start location
@@ -71,4 +75,61 @@ test_tr = sample_trajectory(2, test_args, verbose=true, n_optim_iters=1)
 
 # Visualize test trajectory
 callback = PlotCallback()
-callback(test_tr, true)
+
+# Define function to draw trajectories manually
+interaction_fns = []
+
+function draw_trajectory(axis, trajectory=Vector{Float64}[])
+    # Remove previous interaction functions
+    for fn in interaction_fns
+        off(fn)
+    end
+    empty!(interaction_fns)
+    # Turn off other mouse interactions
+    axis.xpanlock = true
+    axis.ypanlock = true
+    axis.xzoomlock = true
+    axis.yzoomlock = true
+    axis.xrectzoom = false
+    axis.yrectzoom = false
+    # Create trajectory observable
+    trajectory_obs = Observable(trajectory)
+    points = @lift Makie.Point2f.($trajectory_obs)
+    # Create scatter plot for trajectory
+    scatter!(axis, points)
+    # Create interaction function
+    obs_f = on(events(axis).mousebutton, priority=1) do event
+        if event.button == Mouse.left && event.action == Mouse.press
+            push!(trajectory_obs[], collect(Float64, mouseposition(axis)))
+            notify(trajectory_obs)
+        elseif event.button == Mouse.right && event.action == Mouse.press
+            if length(trajectory_obs[]) > 0
+                pop!(trajectory_obs[])
+                notify(trajectory_obs)
+            end
+        end
+    end
+    push!(interaction_fns, obs_f)
+    return trajectory
+end
+
+# Re-render scene in new axis
+figure, axis, plot = sceneviz(scene)
+axis.aspect = DataAspect()
+axis.limits = (-1, 6, -1, 6)
+
+# Draw several trajectories
+trajectory1 = draw_trajectory(axis)
+trajectory2 = draw_trajectory(axis)
+trajectory3 = draw_trajectory(axis)
+
+# Collect trajectories as matrices
+trajectory1 = reduce(hcat, trajectory1)
+trajectory2 = reduce(hcat, trajectory2)
+trajectory3 = reduce(hcat, trajectory3)
+
+# Write trajectories to file
+scene_id = 1
+for (i, trajectory) in enumerate([trajectory1, trajectory2, trajectory3])
+    writedlm("scene_$(scene_id)_trajectory_$i.csv", trajectory, ',')
+end

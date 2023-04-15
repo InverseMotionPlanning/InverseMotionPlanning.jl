@@ -13,7 +13,7 @@ smc_trajectory_gf = SMCTrajectoryGF{2}(
         :unmc_step_schedule => [0.2],
         :nmc_step_schedule => [0.2, 0.1, 0.05],
         :n_ula_iters => 0,
-        :n_mala_iters => 0,
+        :n_mala_iters => 1,
     ),
     fast_update=true
 )
@@ -61,7 +61,7 @@ scene = Scene{2}(
 n_obs = 10
 start = [0.5, 0.5]
 n_points = 21
-d_safe = 0.1
+d_safe = 0.2
 obs_mult = 1.0
 alpha = 20.0
 args = (n_obs, scene, start, n_points, d_safe, obs_mult, alpha)
@@ -90,30 +90,37 @@ tr = nmc_mala_sampler(tr, 100; callback, selection,
 
 # Define forward and backward proposals
 
-"Propose trajectory point at step `t` given observation at `t`."
+"Propose trajectory point at step `t-1` given observation at `t`."
 @gen function trajectory_fwd_proposal(trace, t, obs)
-    observed_point = obs[:observations => t]
-    {:trajectory => t} ~ broadcasted_normal(observed_point, 0.1)
+    n_points = get_args(trace)[4]
+    if 1 < t < n_points # Only propose for non-endpoints
+        observed_point = obs[:observations => t]
+        {:trajectory => t-1} ~ broadcasted_normal(observed_point, 0.1)
+    end
 end
 
 "Backward proposal for trajectory point at step `t` given observation at `t`."
 @gen function trajectory_bwd_proposal(trace, t, obs)
-    # Guess that point was close to subsequent point
-    next_point = trace[:trajectory][:, t+2]
-    {:trajectory => t} ~ broadcasted_normal(next_point, 0.2)
+    n_points = get_args(trace)[4]
+    if 1 < t < n_points # Only propose for non-endpoints
+        # Guess that point was close to subsequent point
+        next_point = trace[:trajectory][:, t+1]
+        {:trajectory => t-1} ~ broadcasted_normal(next_point, 0.2)
+    end
 end
 
 # Generate test trajectory
 test_args = (n_points, start, [5.5, 5.5], scene, d_safe, obs_mult, alpha)
-test_tr = sample_trajectory(2, test_args, verbose=true, n_optim_iters=5)
+test_tr = sample_trajectory(2, test_args, verbose=true, n_optim_iters=5, return_best=true)
 
 # Visualize test trajectory
 callback = PlotCallback()
 callback(test_tr, true)
 
 # Convert test trajectory to observation choicemaps
-test_choices = get_choices(test_tr)
-obs_choices = [choicemap((:observations => t, v)) for (t, v) in get_values_shallow(test_choices)]
+test_trajectory = test_tr[]
+obs_choices = [choicemap((:observations => t, collect(v)))
+               for (t, v) in enumerate(eachcol(test_trajectory))]
 
 # Stratified initialization of particle filter
 N, K = 30, 10
@@ -134,16 +141,8 @@ callback(pf)
 # Run particle filter
 argdiffs = (UnknownChange(), ntuple(Returns(NoChange()), length(args)-1)...)
 for (t, obs) in enumerate(obs_choices)
-    # Construct selection for remaining steps
-    idxs = t:n_points-2
-    sel = DynamicSelection()
-    sel.subselections[:trajectory] = select(idxs...)
     # Rejuvenate particles
-    pf_move_accept!(pf, nmc_mala, (sel,), 5; nmc_step_size=0.05)
-    callback(pf)
-    pf_move_accept!(pf, mala, (select(:trajectory), 0.002), 5)
-    callback(pf)
-    pf_move_reweight!(pf, ula_reweight, (select(:trajectory), 0.002), 10)
+    pf_move_accept!(pf, nmc_mala, (select(:trajectory),), 1; nmc_step_size=0.05)
     callback(pf)
     # Update filter state with new observation
     obs = obs_choices[t]
