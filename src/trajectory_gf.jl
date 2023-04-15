@@ -374,7 +374,7 @@ function sample_trajectory(
         cur_alpha = k == n_mcmc_iters ? alpha : cur_alpha * mult
         new_args = (args[1:end-1]..., cur_alpha)
         pf_update!(pf, new_args, argdiffs, EmptyChoiceMap())
-        # Perturch traces via MCMC
+        # Perturb traces via MCMC
         pf_move_accept!(pf, nmc_mala, (AllSelection(),);
                         mala_steps=5, mala_step_size=0.002, 
                         nmc_steps=2, nmc_step_size=0.1)

@@ -348,26 +348,23 @@ function Gen.update(
     end
     # If arguments do not change, retain other particle weights
     if all(isa.(argdiffs, NoChange)) || all(args .== values(trace.args))
-        new_log_w_sum = trace.log_z_est + log(gen_fn.n_particles)
-        new_log_w_sum = log(exp(new_log_w_sum) - exp(trace.chosen_weight))
         chosen_idx = trace.chosen_idx
         new_traces = copy(trace.traces)
         new_traces[chosen_idx] = new_chosen_trace
         new_log_weights = copy(trace.log_weights)
-        new_log_weights[chosen_idx] = new_chosen_weight  
+        new_log_weights[chosen_idx] = new_chosen_weight
     else # Rerun particle filter for other traces if arguments change
         n_particles = gen_fn.n_particles - 1
         target_fn = get_gen_fn(new_chosen_trace)
         pf = pf_initialize(target_fn, args, EmptyChoiceMap(), n_particles)
         pf_move_reweight!(pf, gen_fn.fwd_kernel, gen_fn.kernel_args;
                           gen_fn.kernel_kwargs...)
-        new_log_w_sum = logsumexp(pf.log_weights)
         chosen_idx = trace.chosen_idx
         new_traces = insert!(pf.traces, chosen_idx, new_chosen_trace)
         new_log_weights = insert!(pf.log_weights, chosen_idx, new_chosen_weight)
     end
     # Update estimate of log normalizing constant and normalized log probability
-    new_log_w_sum = logsumexp(new_log_w_sum, new_chosen_weight)
+    new_log_w_sum = logsumexp(new_log_weights)
     new_log_z_est = new_log_w_sum - log(gen_fn.n_particles)
     new_score = get_score(new_chosen_trace) - new_log_z_est
     # Construct updated trace and weight
