@@ -1,6 +1,30 @@
 ## Callbacks for printing and plotting traces ##
-export PrintCallback, PlotCallback, PrintPlotCallback, StoreTracesCallback
+export CombinedCallback
+export PrintCallback, PlotCallback, PrintPlotCallback
+export StoreTracesCallback, ParticleFilterStatsCallback
 export init_plot!
+
+"Callback that runs each callback in sequence."
+struct CombinedCallback{T <: Tuple}
+    callbacks::T
+end
+
+CombinedCallback(callbacks::T) where {T <: Tuple} =
+    CombinedCallback{T}(callbacks)
+CombinedCallback(callbacks...) =
+    CombinedCallback(callbacks)
+
+function (cb::CombinedCallback)(trace::Trace, accepted)
+    for callback in cb.callbacks
+        callback(trace, accepted)
+    end
+end
+
+function (cb::CombinedCallback)(pf_state::ParticleFilterState)
+    for callback in cb.callbacks
+        callback(pf_state)
+    end
+end
 
 "Callback for printing trace information."
 struct PrintCallback
@@ -353,7 +377,7 @@ function (cb::PrintPlotCallback)(trace, accepted)
 end
 
 
-"Callback to store traces and functions to calculate run statistics."
+"Callback to store traces to calculate run statistics."
 struct StoreTracesCallback
     traces::Vector{TrajectoryTrace}
 end
@@ -364,4 +388,43 @@ end
 
 function (cb::StoreTracesCallback)(trace, accepted)
     push!(cb.traces, trace)
+end
+
+"Callback for logging particle filter statistics."
+struct ParticleFilterStatsCallback
+    statistics::Dict{Symbol,Any}
+    loggers::Dict{Symbol,Any}
+end
+
+function ParticleFilterStatsCallback(; kwargs...)
+    defaults = Dict{Symbol,Any}(
+        # Computes goal probabilities
+        :goal_probs => pf -> begin 
+            probs = proportionmap(pf, :goal)
+            return [probs[k] for k in sort!(collect(keys(probs)))]
+        end,
+        # Computes MSE between observations and inferred trajectory
+        :trajectory_mse => pf -> begin
+            mean(pf, :trajectory, :observations) do trajectory, observations
+                n_obs = size(observations, 2)
+                return sum((trajectory[:, 1:n_obs] .- observations) .^2)
+            end
+        end,
+        # Compute log marginal likelihood
+        :log_ml_est => log_ml_estimate
+    )
+    loggers = merge!(defaults, Dict(kwargs...))
+    return ParticleFilterStatsCallback(Dict{Symbol,Any}(), loggers)
+end
+
+function (cb::ParticleFilterStatsCallback)(pf_state::ParticleFilterState)
+    for (name, logger) in cb.loggers
+        history = get(cb.statistics, name, nothing)
+        if isnothing(history)
+            history = [logger(pf_state)]
+            cb.statistics[name] = history
+        else
+            push!(history, logger(pf_state))
+        end
+    end
 end
