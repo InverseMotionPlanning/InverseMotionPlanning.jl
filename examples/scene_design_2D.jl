@@ -9,51 +9,13 @@ import GLMakie:
     GLMakie, Makie, Axis, Figure, Observable, @lift,
     scatter!, events, Mouse, DataAspect, on, off, mouseposition
 
-# Define obstacles
-TOY = [Box(Point(1, 1), Point(2, 2)) # simple two-obstacle toy setup 
-       Box(Point(3, 3), Point(4, 4))]
-
-FULL_CNTR = [Triangle((1.5, 1.5), (2.0, 4.0), (4.0, 2.0))] # center Ngon
-
-EMPTY_CNTR = [ Box(Point(1, 1), Point(2, 2)), # big empty-center rhomboid
-               Box(Point(3, 3), Point(4, 4)),
-               Box(Point(1, 3), Point(2, 4)),
-               Box(Point(3, 1), Point(4, 2)),
-               Box(Point(0, 2), Point(1, 3)),
-               Box(Point(4, 2), Point(5, 3)),
-               Box(Point(2, 0), Point(3, 1)),
-               Box(Point(2, 4), Point(3, 5))]
-
-MAZE = [Box(Point(0, 1), Point(1, 2)), # varryingly-narrow maze
-        Box(Point(0, 2), Point(1, 3)),
-        Box(Point(0, 3), Point(1, 4)),
-        Box(Point(2, 2), Point(3, 3)),
-        Box(Point(3, 1), Point(4, 2)),
-        Box(Point(3, 2), Point(4, 3)),
-        Box(Point(3, 3), Point(4, 4))]
-
-TUNNEL = [Box(Point(1, -1), Point(2, 0)), # narrow passage
-          Box(Point(1, 0), Point(2, 1)),
-          Box(Point(1, 1), Point(2, 2)),
-          Box(Point(1, 2), Point(2, 3)),
-          Box(Point(2, -1), Point(3, 0)),
-          Box(Point(2, 0), Point(3, 1)),
-          Box(Point(2, 1), Point(3, 2)),
-          Box(Point(2, 2), Point(3, 3)),
-          Box(Point(3, 5), Point(4, 6)),
-          Box(Point(3, 4), Point(4, 5)),
-          Box(Point(4, 5), Point(5, 6)),
-          Box(Point(4, 4), Point(5, 5))]
-
-#LAPLACE_ADV = [Box(Point(1, 1), Point(2, 2)) # adversary to Laplace method
-               #Box(Point(3, 3), Point(4, 4))]
-
-# Construct scene
-scene = Scene{2}(
+# Define scenes
+PILLARS = Scene{2}(
     limits = Box(Point(-1.0, -1.0), Point(6.0, 6.0)),
-
-    obstacles = TUNNEL,
-
+    obstacles = [
+        Box(Point(1, 1), Point(2, 2)), 
+        Box(Point(3, 3), Point(4, 4))
+    ],
     regions = Dict(
         :A => Box(Point(5, 5), Point(6, 6)),
         :B => Box(Point(0, 5), Point(1, 6)),
@@ -61,14 +23,71 @@ scene = Scene{2}(
     )
 )
 
+NGONS = Scene{2}(
+    limits = Box(Point(-1.0, -1.0), Point(6.0, 6.0)),
+    obstacles = [
+        Ngon((0.5, 1.5), (-0.25, 4.0), (2.0, 3.0)),
+        Ngon((3.0, 3.5), (4.0, 4.5), (5.0, 4.0), (5.0, 2.0)),
+        Ngon((1.5, -0.25), (2.0, 1.25), (3.0, 1.50), (4.0, 0.25)),
+    ],
+    regions = Dict(
+        :A => Box(Point(5, 5), Point(6, 6)),
+        :B => Box(Point(0, 5), Point(1, 6)),
+        :C => Box(Point(5, 0), Point(6, 1))
+    )
+)
+
+MAZE = Scene{2}(
+    limits = Box(Point(-1.0, -1.0), Point(6.0, 6.0)),
+    obstacles = [
+        Box(Point(0, 1), Point(1, 4)),
+        Box(Point(2, 2), Point(3, 3)),
+        Box(Point(3, 1), Point(4, 4))
+    ],
+    regions = Dict(
+        :A => Box(Point(5, 5), Point(6, 6)),
+        :B => Box(Point(0, 5), Point(1, 6)),
+        :C => Box(Point(5, 0), Point(6, 1))
+    )
+)    
+
+TUNNEL = Scene{2}(
+    limits = Box(Point(-1.0, -1.0), Point(6.0, 6.0)),
+    obstacles = [
+        Box(Point(1, -1), Point(3, 3)), # narrow passage
+        Box(Point(3, 4), Point(5, 6))
+    ],
+    regions = Dict(
+        :A => Box(Point(5, 5), Point(6, 6)),
+        :B => Box(Point(0, 5), Point(1, 6)),
+        :C => Box(Point(5, 0), Point(6, 1))
+    )
+)
+
+FOX = Scene{2}(
+    limits = Box(Point(-1.0, -1.0), Point(6.0, 6.0)),
+    obstacles = [
+        Ngon((0.5, 3.75), (0.5, 5.25), (2.0, 4.5)),
+        Ngon((4.5, 3.75), (4.5, 5.25), (3.0, 4.5)),
+        Ngon((1.0, 2.5), (2.0, 3.5), (2.0, 1.0)),
+        Ngon((4.0, 2.5), (3.0, 3.5), (3.0, 1.0))
+    ],
+    regions = Dict(
+        :A => Box(Point(2, -0.5), Point(3, 0.5)),
+        :B => Box(Point(-1, 4), Point(0, 5)),
+        :C => Box(Point(5, 4), Point(6, 5))
+    )
+)
+
 # Visualize scene
+scene = FOX
 figure, axis, plot = sceneviz(scene)
 axis.aspect = DataAspect()
 axis.limits = (-1, 6, -1, 6)
 
 # Generate test trajectory
-start = [0.5, 0.5] # Start location
-stop = [5.5, 0.5] # Stop location
+start = [2.5, 4.5] # Start location
+stop = [5.5, 4.5] # Stop location
 n_points = 21 # Number of points in trajectory
 d_safe = 0.2 # Safe distance
 obs_mult = 5.0 # Obstacle multiplier
@@ -77,67 +96,51 @@ test_args = (n_points, start, stop, scene, d_safe, obs_mult, alpha)
 
 callback = PlotCallback(alpha_as_weight=true, alpha_factor=0.5)
 test_tr = sample_trajectory(
-    2, test_args, verbose=true, callback=callback, return_best=true
+    2, test_args, n_replicates=50, verbose=true,
+    callback=callback, return_best=true
 )
 
 # Visualize test trajectory
 callback = PlotCallback()
 callback(test_tr, true)
 
-# Define function to draw trajectories manually
-interaction_fns = []
+# Generate test trajectories for each scene
+SCENES = [PILLARS, NGONS, MAZE, TUNNEL, FOX]
+STARTS = [fill([0.5, 0.5], 4); [[2.5, 4.5]]]
 
-function draw_trajectory(axis, trajectory=Vector{Float64}[])
-    # Remove previous interaction functions
-    for fn in interaction_fns
-        off(fn)
-    end
-    empty!(interaction_fns)
-    # Turn off other mouse interactions
-    axis.xpanlock = true
-    axis.ypanlock = true
-    axis.xzoomlock = true
-    axis.yzoomlock = true
-    axis.xrectzoom = false
-    axis.yrectzoom = false
-    # Create trajectory observable
-    trajectory_obs = Observable(trajectory)
-    points = @lift Makie.Point2f.($trajectory_obs)
-    # Create scatter plot for trajectory
-    scatter!(axis, points)
-    # Create interaction function
-    obs_f = on(events(axis).mousebutton, priority=1) do event
-        if event.button == Mouse.left && event.action == Mouse.press
-            push!(trajectory_obs[], collect(Float64, mouseposition(axis)))
-            notify(trajectory_obs)
-        elseif event.button == Mouse.right && event.action == Mouse.press
-            if length(trajectory_obs[]) > 0
-                pop!(trajectory_obs[])
-                notify(trajectory_obs)
+for (i, (scene, start)) in enumerate(zip(SCENES, STARTS))
+    println("== Scene $i ==")
+    i <  4 && continue
+    for (goal, region) in scene.regions
+        goal != :C && continue
+        println("-- Goal $goal --")
+        stop = Vector(coordinates(centroid(region)))
+        test_args = (n_points, start, stop, scene, d_safe, obs_mult, alpha)
+        n_samples = 30
+        callback = PlotCallback(alpha_as_weight=false, alpha_factor=0.1)
+        traces = sample_trajectory(
+            2, test_args, n_samples; n_replicates=50, verbose=true,
+            n_mcmc_iters=50,  callback=callback, return_best=true
+        )
+        println("Visualizing trajectories for selection...")
+        count = 0
+        for trace in traces
+            trajectory = get_retval(trace)
+            callback = PlotCallback()
+            callback(trace, true)
+            sleep(0.1)
+            print("Save trajectory? [y/n] ")
+            resp = readline()
+            if resp == "y"
+                count += 1
+                println("$count/5 saved")
+                writedlm("scene_$(i)_goal_$(goal)_trajectory_$(count).csv", trajectory)
+            end
+            if count == 5
+                break
             end
         end
+        println()
     end
-    push!(interaction_fns, obs_f)
-    return trajectory
-end
-
-# Re-render scene in new axis
-figure, axis, plot = sceneviz(scene)
-axis.aspect = DataAspect()
-axis.limits = (-1, 6, -1, 6)
-
-# Draw several trajectories
-trajectory1 = draw_trajectory(axis)
-trajectory2 = draw_trajectory(axis)
-trajectory3 = draw_trajectory(axis)
-
-# Collect trajectories as matrices
-trajectory1 = reduce(hcat, trajectory1)
-trajectory2 = reduce(hcat, trajectory2)
-trajectory3 = reduce(hcat, trajectory3)
-
-# Write trajectories to file
-scene_id = 1
-for (i, trajectory) in enumerate([trajectory1, trajectory2, trajectory3])
-    writedlm("scene_$(scene_id)_trajectory_$i.csv", trajectory, ',')
+    println()
 end
