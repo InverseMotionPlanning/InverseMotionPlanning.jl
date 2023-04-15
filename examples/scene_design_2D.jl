@@ -65,16 +65,21 @@ axis.limits = (-1, 6, -1, 6)
 
 # Generate test trajectory
 start = [0.5, 0.5] # Start location
-stop = [5.5, 5.5] # Stop location
+stop = [5.5, 0.5] # Stop location
 n_points = 21 # Number of points in trajectory
 d_safe = 0.1 # Safe distance
-obs_mult = 1.0 # Obstacle multiplier
+obs_mult = 5.0 # Obstacle multiplier
 alpha = 20.0 # Rationality parameter
 test_args = (n_points, start, stop, scene, d_safe, obs_mult, alpha)
-test_tr = sample_trajectory(2, test_args, verbose=true, n_optim_iters=1)
+
+callback = PlotCallback(alpha_as_weight=true, alpha_factor=0.5)
+test_tr = sample_trajectory(
+    2, test_args, verbose=true, callback=callback, return_best=true
+)
 
 # Visualize test trajectory
 callback = PlotCallback()
+callback(test_tr, true)
 
 # Define function to draw trajectories manually
 interaction_fns = []

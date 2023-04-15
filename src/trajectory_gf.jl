@@ -296,60 +296,83 @@ are the arguments to a `BoltzmannTrajectoryGF`.
 - `n_replicates::Int = 20`: Number of MCMC replicates / chains.
 - `n_mcmc_iters::Int = 10`: Number of MCMC iterations.
 - `n_optim_iters::Int = 10`: Number of gradient descent iterations.
+- `init_alpha::Float64 = 1.0`: Initial value of `alpha` for simulated annealing.
 - `return_best::Bool = false`: Flag to return best trace instead of sampling.
 - `verbose::Bool = false`: Flag to print more information.
 """
 function sample_trajectory(
     n_dims::Int, args::Tuple;
     n_replicates::Int = 20,
-    n_mcmc_iters::Int = 10,
+    n_mcmc_iters::Int = 30,
     n_optim_iters::Int = 10,
+    init_alpha::Float64 = 1.0,
     return_best::Bool = false,
-    verbose::Bool=false
+    verbose::Bool=false,
+    callback=Returns(nothing)
 )
     # Generate initial trajectory traces
     if verbose
         println("Generating $n_replicates initial trajectories...")
     end
-    traces = [generate(BoltzmannTrajectoryGF{n_dims}(), args)[1]
-              for _ in 1:n_replicates]
+    alpha = args[end]
+    init_args = (args[1:end-1]..., init_alpha)
+    pf = pf_initialize(BoltzmannTrajectoryGF{n_dims}(), init_args,
+                       EmptyChoiceMap(), n_replicates)
+    callback(pf)
     # Diversify initial trajectories via NMC reweigting steps
     if verbose
         println("Diversifying initial trajectories via NMC proposals...")
     end
     for i in 1:n_replicates
         step_size = rand([0.1, 0.2, 0.4, 0.8])
-        traces[i], _ = nmc_reweight(traces[i], AllSelection(); step_size)
+        pf.traces[i], _ = nmc_reweight(pf.traces[i], AllSelection(); step_size)
+        pf.log_weights[i] = get_score(pf.traces[i])
     end
+    callback(pf)
     # Run stochastic optimization via MCMC
     if verbose
         println("Running $n_mcmc_iters iterations of MCMC (NMC + MALA)...")
     end
-    for i in 1:n_replicates
-        traces[i] = nmc_mala_sampler(traces[i], n_mcmc_iters;
-                                     mala_steps=5, mala_step_size=0.002, 
-                                     nmc_steps=1, nmc_step_size=0.5)
+    argdiffs = map((_) -> UnknownChange(), args)
+    mult = (alpha / init_alpha) ^ (1 / n_mcmc_iters)
+    cur_alpha = init_alpha
+    for k in 1:n_mcmc_iters
+        # Anneal alpha and update traces with new value
+        cur_alpha = k == n_mcmc_iters ? alpha : cur_alpha * mult
+        new_args = (args[1:end-1]..., cur_alpha)
+        pf_update!(pf, new_args, argdiffs, EmptyChoiceMap())
+        # Perturch traces via MCMC
+        pf_move_accept!(pf, nmc_mala, (AllSelection(),);
+                        mala_steps=5, mala_step_size=0.002, 
+                        nmc_steps=2, nmc_step_size=0.1)
+        for i in 1:n_replicates
+            pf.traces[i] = map_optimize(pf.traces[i], AllSelection())
+        end
+        pf.log_weights .= get_score.(pf.traces)
+        callback(pf)
     end
     # Optimize each trace via backtracking gradient descent
     if verbose
         println("Running $n_optim_iters iterations of gradient descent...")
     end
-    for i in 1:n_replicates
-        for k in 1:n_optim_iters
-            traces[i] = map_optimize(traces[i], AllSelection())
+    for k in 1:n_optim_iters
+        for i in 1:n_replicates
+            pf.traces[i] = map_optimize(pf.traces[i], AllSelection())
         end
+        pf.log_weights .= get_score.(pf.traces)
+        callback(pf)
     end
     # Sample or select best trace
     if return_best
         if verbose
             println("Selecting best trajectory among replicates...")
         end
-        trace = argmax(get_score, traces)
+        trace = argmax(get_score, pf.traces)
     else
         if verbose
             println("Sampling trajectory from replicates...")
         end
-        trace = rand(traces)
+        trace = rand(pf.traces)
     end
     if verbose
         println("Score: ", trace.score)
