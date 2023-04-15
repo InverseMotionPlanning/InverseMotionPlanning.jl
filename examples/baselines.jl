@@ -31,20 +31,27 @@ function laplace_imp(
     alpha::Real
 )
     goal_probs = Float64[]
+    new_start = obs_trajectory[end]  # last point of the observed trajectory
     for region in scene.regions
         goal = region.center  # assuming the goal is the center of the region
 
         # Generate the optimal completion of the snippet to the goal
-        optimal_completion_args = (goal, n_points, d_safe, obs_mult, alpha)
-        optimal_completion = sample_trajectory(length(start), optimal_completion_args, return_best=true)
+        optimal_completion_args = (new_start, goal, n_points, d_safe, obs_mult, alpha)
+        optimal_completion_trace = sample_trajectory(length(start), optimal_completion_args, return_best=true)
+        optimal_completion = get_retval(optimal_completion_trace)
 
         # Generate the optimal trajectory from start to goal
         optimal_args = (start, goal, n_points, d_safe, obs_mult, alpha)
-        optimal = sample_trajectory(length(start), optimal_args, return_best=true)
+        optimal_trace = sample_trajectory(length(start), optimal_args, return_best=true)
+        optimal = get_retval(optimal_trace)
+
+        # Concatenate the observed trajectory and the optimal completion
+        combined_trajectory = vcat(obs_trajectory, optimal_completion)
 
         # Compute probability of reaching region given partial trajectory
-        log_prob = -trajectory_cost(obs_trajectory) - trajectory_cost(optimal_completion) + trajectory_cost(optimal)
-        push!(goal_probs, exp(log_prob))
+        log_prob = -trajectory_cost(combined_trajectory) +  
+                    trajectory_cost(optimal, scene)
+        push!(goal_probs, exp(alpha*log_prob))
     end
 
     # Normalize the goal probabilities
