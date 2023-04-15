@@ -3,8 +3,11 @@ using InverseTAMP
 using LinearAlgebra
 using Meshes
 using Gen, GenParticleFilters
-using GLMakie
 using DelimitedFiles
+
+import GLMakie:
+    GLMakie, Makie, Axis, Figure, Observable, @lift,
+    scatter!, events, Mouse, DataAspect, on, off, mouseposition
 
 # Define obstacles
 TOY = [Box(Point(1, 1), Point(2, 2)) # simple two-obstacle toy setup 
@@ -67,7 +70,7 @@ axis.limits = (-1, 6, -1, 6)
 start = [0.5, 0.5] # Start location
 stop = [5.5, 0.5] # Stop location
 n_points = 21 # Number of points in trajectory
-d_safe = 0.1 # Safe distance
+d_safe = 0.2 # Safe distance
 obs_mult = 5.0 # Obstacle multiplier
 alpha = 20.0 # Rationality parameter
 test_args = (n_points, start, stop, scene, d_safe, obs_mult, alpha)
