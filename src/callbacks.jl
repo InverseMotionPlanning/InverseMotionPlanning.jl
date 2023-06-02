@@ -1,7 +1,7 @@
 ## Callbacks for printing and plotting traces ##
 export CombinedCallback
 export PrintCallback, PlotCallback, PrintPlotCallback
-export StoreTracesCallback, ParticleFilterStatsCallback
+export StoreTracesCallback, PFStatsCallback
 export init_plot!
 
 "Callback that runs each callback in sequence."
@@ -36,7 +36,8 @@ function PrintCallback(io::IO=stdout; kwargs...)
         :accepted => false,
         :costs => false,
         :newline => false,
-        :trajectory_addr => nothing
+        :trajectory_addr => nothing,
+        :goal_probs => true,
     )
     options = merge!(defaults, Dict(kwargs...))
     return PrintCallback(io, options)
@@ -65,6 +66,15 @@ function (cb::PrintCallback)(trace, accepted)
     end
 end
 
+function (cb::PrintCallback)(pf_state::ParticleFilterState)
+    if cb.options[:goal_probs]
+        goal_probs = proportionmap(pf_state, :goal)
+        names = sort!(collect(keys(goal_probs)))
+        goal_probs = [goal_probs[name] for name in names]
+        @printf("%.2f\t%.2f\t%.2f\n", goal_probs...)
+    end
+end
+
 "Callback for plotting trace information."
 mutable struct PlotCallback
     axis::Union{Axis,Axis3,Nothing}
@@ -90,6 +100,7 @@ function PlotCallback(axis=nothing, observables=Dict(); kwargs...)
         :image_path_prefix => "image_",
         :timestep_arg_index => 1,
         :sleep => 0.01,
+        :axis_options => Dict()
     )
     options = merge!(defaults, Dict(kwargs...))
     return PlotCallback(axis, options, observables)
@@ -187,7 +198,7 @@ function (cb::PlotCallback)(pf_state::ParticleFilterState)
     cb.observables[:timestep][] = get_args(trace)[timestep_arg_idx]
     # Show timestep in caption
     if cb.options[:show_timestep]
-        cb.axis.xlabel = "Timestep: " * string(cb.observables[:timestep][])
+        cb.axis.xlabel = "t = " * string(cb.observables[:timestep][])
     end    
     # Save image
     if cb.options[:save_image]
@@ -239,7 +250,7 @@ function init_plot!(cb::PlotCallback, pf_state::ParticleFilterState, axis=nothin
     cb.observables[:timestep] = Observable(trace_args[timestep_arg_idx])
     # Show timestep in caption
     if cb.options[:show_timestep]
-        cb.axis.xlabel = "Timestep: " * string(cb.observables[:timestep][])
+        cb.axis.xlabel = "t = " * string(cb.observables[:timestep][])
     end
 end
 
@@ -247,9 +258,10 @@ function init_plot_scene!(cb::PlotCallback, scene::Scene, axis=nothing)
     # Construct figure, axis if non-existent
     dims = paramdim(scene)
     if isnothing(axis)
-        fig = Figure(resolution=(600, 600))
+        fig = Figure(resolution=(800, 800))
         if dims == 2
-            cb.axis = Axis(fig[1, 1], aspect=Makie.DataAspect())
+            cb.axis = Axis(fig[1, 1], aspect=Makie.DataAspect(),
+                           cb.options[:axis_options]...)
             # Set limits if specified
             min_coords = Tuple(scene.limits.min.coords)
             max_coords = Tuple(scene.limits.max.coords)
@@ -392,10 +404,14 @@ end
 struct ParticleFilterStatsCallback
     statistics::Dict{Symbol,Any}
     loggers::Dict{Symbol,Any}
+    options::Dict{Symbol,Any}
 end
 
-function ParticleFilterStatsCallback(; kwargs...)
-    defaults = Dict{Symbol,Any}(
+function ParticleFilterStatsCallback(;
+    obs_trajectory=nothing, print_stats=kwargs...
+)
+    # Define default statistics loggers
+    default_loggers = Dict{Symbol,Any}(
         # Computes goal probabilities
         :goal_probs => pf -> begin 
             probs = proportionmap(pf, :goal)
@@ -405,24 +421,52 @@ function ParticleFilterStatsCallback(; kwargs...)
         :trajectory_mse => pf -> begin
             mean(pf, :trajectory, :observations) do trajectory, observations
                 n_obs = size(observations, 2)
-                return sum((trajectory[:, 1:n_obs] .- observations) .^2)
+                return sum((trajectory[:, 1:n_obs] .- observations) .^2) / n_obs
             end
         end,
         # Compute log marginal likelihood
         :log_ml_est => log_ml_estimate
     )
-    loggers = merge!(defaults, Dict(kwargs...))
-    return ParticleFilterStatsCallback(Dict{Symbol,Any}(), loggers)
+    if !isnothing(obs_trajectory)
+        default_loggers[:pred_mse] = pf -> begin
+            mean(pf, :trajectory, :observations) do trajectory, observations
+                n_obs = size(observations, 2)
+                n_remain = size(trajectory, 2) - n_obs
+                n_remain == 0 && return 0.0
+                pred_completion = trajectory[:, n_obs+1:end]
+                obs_completion = obs_trajectory[:, n_obs+1:end]
+                return sum((pred_completion .- obs_completion) .^2) / n_remain
+            end
+        end
+    end
+    loggers = merge!(default_loggers, loggers)
+    defaults = Dict{Symbol,Any}(
+        :print_stats => [:goal_probs]
+    )
+    options = merge!(defaults, Dict(kwargs...))
+    return ParticleFilterStatsCallback(Dict{Symbol,Any}(), loggers, options)
 end
 
 function (cb::ParticleFilterStatsCallback)(pf_state::ParticleFilterState)
+    print_stats = cb.options[:print_stats]
     for (name, logger) in cb.loggers
         history = get(cb.statistics, name, nothing)
+        result = logger(pf_state)
+        if name in print_stats
+            if result isa Vector
+                for r in result
+                    @printf("%.2f\t", r)
+                end
+            else
+                @printf("%.2f\t", result)
+            end
+        end
         if isnothing(history)
-            history = [logger(pf_state)]
+            history = [result]
             cb.statistics[name] = history
         else
-            push!(history, logger(pf_state))
+            push!(history, result)
         end
     end
+    println()
 end

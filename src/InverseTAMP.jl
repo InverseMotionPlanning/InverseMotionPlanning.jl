@@ -7,6 +7,7 @@ using Meshes
 using Gen
 using GenParticleFilters
 using Statistics
+using Printf
 
 import ConvexBodyProximityQueries as CBPQ
 import Zygote: Zygote, withgradient, hessian
