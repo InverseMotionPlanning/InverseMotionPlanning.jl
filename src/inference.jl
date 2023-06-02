@@ -1,7 +1,7 @@
 # Export kernels
 export drift_kernel_block, drift_kernel_point, drift_kernel_trajectory
 export nmc, nmc_multiple_try, nmc_mala, nhmc
-export ula_reweight, nmc_reweight
+export map_reweight, ula_reweight, nmc_reweight
 # Export samplers
 export mcmc_sampler, rwmh_sampler, mala_sampler, hmc_sampler
 export nmc_sampler, nmc_mala_sampler, nhmc_sampler
@@ -49,6 +49,20 @@ end
         ts = t:min(t+block_size-1, n_points-2)
         trace ~ mh(trace, drift_proposal_block, (ts, sigma))
     end
+end
+
+function map_reweight(
+    trace, selection::Selection;
+    tau=0.002, max_step_size=0.002, step_mult=0.5, min_step_size=1e-16,
+    check=false, observations=EmptyChoiceMap()
+)
+    new_trace = map_optimize(trace, selection, max_step_size=max_step_size,
+                             tau=step_mult, min_step_size=min_step_size)
+    map_weight = get_score(new_trace) - get_score(trace)
+    new_trace, ula_weight = ula_reweight(new_trace, selection, tau,
+                                         check=check, observations=observations)
+    weight = map_weight + ula_weight
+    return (new_trace, weight)
 end
 
 """
