@@ -44,7 +44,6 @@ function Zygote.hessian(::typeof(smoothness_cost), trajectory::AbstractMatrix)
     return H
 end
 
-
 function trajectory_cost(trajectory::AbstractMatrix, scene::Scene,
                          d_safe::Real=0.1, obs_mult::Real=1.0)
     return (obs_mult * obstacle_cost(trajectory, scene, d_safe) +

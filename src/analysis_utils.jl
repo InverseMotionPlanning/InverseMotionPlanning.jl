@@ -1,7 +1,10 @@
 export algo_names, collect_traces, plot_trajectory_covariance_trace, plot_cost_distribution, plot_cost_vs_iteration
+export movmean
 
 import LinearAlgebra
 import GLMakie
+
+movmean(vs, n) = [sum(@view vs[i:(i+n-1)])/n for i in 1:(length(vs)-(n-1))]
 
 algo_names = Dict(
     "rwmh" => "Random-Walk Metropolis-Hastings (RWMH)",
@@ -9,7 +12,6 @@ algo_names = Dict(
     "hmc" => "Hamiltonian Monte Carlo (HMC)",
     "nmc" => "Newtonian Monte Carlo (NMC)",
 )
-
 
 function collect_traces(sampler, trace0::Trace, n_iters::Int; kwargs...)
     callback = StoreTracesCallback()
