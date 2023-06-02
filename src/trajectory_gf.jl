@@ -334,7 +334,7 @@ are the arguments to a `BoltzmannTrajectoryGF`.
 - `verbose::Bool = false`: Flag to print more information.
 """
 function sample_trajectory(
-    n_dims::Int, args::Tuple;
+    n_dims::Int, args::Tuple, n_samples::Int=1;
     n_replicates::Int = 20,
     n_mcmc_iters::Int = 30,
     n_optim_iters::Int = 10,
@@ -357,7 +357,7 @@ function sample_trajectory(
         println("Diversifying initial trajectories via NMC proposals...")
     end
     for i in 1:n_replicates
-        step_size = rand([0.1, 0.2, 0.4, 0.8])
+        step_size = rand([0.05, 0.1, 0.2, 0.4, 0.8])
         pf.traces[i], _ = nmc_reweight(pf.traces[i], AllSelection(); step_size)
         pf.log_weights[i] = get_score(pf.traces[i])
     end
@@ -396,16 +396,26 @@ function sample_trajectory(
         callback(pf)
     end
     # Sample or select best trace
-    if return_best
+    if return_best && n_samples == 1
         if verbose
             println("Selecting best trajectory among replicates...")
         end
         trace = argmax(get_score, pf.traces)
-    else
+    elseif return_best && n_samples > 1
+        if verbose
+            println("Selecting $n_samples best trajectories...")
+        end
+        return sort(pf.traces, by=get_score, rev=true)[1:n_samples]
+    elseif n_samples == 1
         if verbose
             println("Sampling trajectory from replicates...")
         end
         trace = rand(pf.traces)
+    elseif n_samples > 1
+        if verbose
+            println("Sampling $n_samples trajectories from replicates...")
+        end
+        return rand(pf.traces, n_samples)
     end
     if verbose
         println("Score: ", trace.score)
