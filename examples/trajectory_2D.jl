@@ -1,7 +1,7 @@
 ## Trajectory sampling example in 2D ##
 
 # Import libraries and dependencies
-using InverseTAMP, Gen, Meshes, Statistics
+using InverseMotionPlanning, Gen, Meshes, Statistics
 import GLMakie: GLMakie, Makie, Axis, Figure, Observable, @lift, barplot, lines!, violin
 import LinearAlgebra
 

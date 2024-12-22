@@ -1,7 +1,7 @@
 ## Trajectory sampling example in 3D ##
 
 # Import libraries and dependencies
-using InverseTAMP, Gen, Meshes
+using InverseMotionPlanning, Gen, Meshes
 import GLMakie: GLMakie, Makie, Axis3, Figure, Observable, @lift
 
 # Construct scene

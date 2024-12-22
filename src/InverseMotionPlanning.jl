@@ -1,4 +1,4 @@
-module InverseTAMP
+module InverseMotionPlanning
 
 using StaticArrays
 using LinearAlgebra

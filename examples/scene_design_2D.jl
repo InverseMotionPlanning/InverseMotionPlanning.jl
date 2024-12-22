@@ -1,5 +1,5 @@
 # Import libraries and dependencies
-using InverseTAMP
+using InverseMotionPlanning
 using LinearAlgebra
 using Meshes
 using Gen, GenParticleFilters

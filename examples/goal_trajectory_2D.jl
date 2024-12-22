@@ -1,5 +1,5 @@
 # Import libraries and dependencies
-using InverseTAMP
+using InverseMotionPlanning
 using LinearAlgebra
 using Meshes
 using Gen, GenParticleFilters
@@ -74,7 +74,7 @@ callback = PrintPlotCallback(sleep=0.001, accepted=true)
 
 # Generate initial trace
 @time tr, w = generate(goal_trajectory_model, args, choicemap(:goal => :A))
-InverseTAMP.get_subtrace(tr, :trajectory).log_z_est
+InverseMotionPlanning.get_subtrace(tr, :trajectory).log_z_est
 
 # Run callback on initial trace
 callback(tr, true)

@@ -1,4 +1,4 @@
-name = "InverseTAMP"
+name = "InverseMotionPlanning"
 uuid = "323c12ae-4d69-4bba-88fc-807360fe8cd3"
 authors = ["Xuan <tanqazx@gmail.com> and contributors"]
 version = "0.1.0"

@@ -1,8 +1,6 @@
-# InverseTAMP.jl
+# InverseMotionPlanning.jl
 
-Inverse task-and-motion-planning (TAMP) in Julia. 
-
-(The "task" part isn't implemented yet.)
+Inverse motion planning in Julia. 
 
 ## Setup
 
@@ -15,13 +13,13 @@ instantiate
 to install all required dependencies. Now exit `Pkg` mode and run:
 
 ```julia
-using InverseTAMP
+using InverseMotionPlanning
 ```
 
 to call functions in the package.
 
 ## Usage
 
-After running `using InverseTAMP`, you can now run the examples in the `examples` direction:
+After running `using InverseMotionPlanning`, you can now run the examples in the `examples` direction:
 - `trajectory_2D.jl` constructs an example 2D scene and samples trajectories in that scene
 - `trajectory_3D.jl` constructs an example 3D scene and samples trajectories in that scene
