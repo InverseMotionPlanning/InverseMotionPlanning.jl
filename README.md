@@ -1,6 +1,6 @@
 # InverseMotionPlanning.jl
 
-This repository provides a Julia-based framework for motion planning and goal-driven trajectory prediction. It includes tools for trajectory sampling, optimization, visualization, and inference over motion planning problems. The framework is built around a probabilistic programming approach, leveraging **[Gen.jl](https://github.com/probcomp/Gen.jl)** for generative modeling and inference.
+This repository provides a Julia-based framework for motion planning and goal-driven trajectory prediction. It includes tools for trajectory sampling, optimization, visualization, and inference over motion planning problems. The framework is built around a probabilistic programming approach, leveraging [Gen.jl](https://github.com/probcomp/Gen.jl) for generative modeling and inference.
 
 The approach and methodology in this repository are described in:
 - **[Bayesian Inverse Motion Planning for Online Goal Inference in Continuous Domains](https://ztangent.github.io/assets/pdf/2023-inverse-motion-planning.pdf)** (ICRA Workshop on Cognitive Modeling in Robot Learning for Adaptive Human-Robot Interactions, 2023)
