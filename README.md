@@ -113,10 +113,10 @@ If you find this code useful in your research, please cite the following:
 
 ```
 @mastersthesis{kondic2024monte,
-  title={Monte Carlo Methods for Motion Planning and Goal Inference},
-  author={Kondic, Jovana},
-  year={2024},
-  school={Massachusetts Institute of Technology},
+  title = {Monte Carlo Methods for Motion Planning and Goal Inference},
+  author = {Kondic, Jovana},
+  year = {2024},
+  school = {Massachusetts Institute of Technology},
   url = {https://hdl.handle.net/1721.1/153789}
 }
 ```
