@@ -101,9 +101,13 @@ Contributions are welcome! To get started:
 If you find this code useful in your research, please cite the following:
 
 ```
-@article{zhibayesian,
-  title={Bayesian Inverse Motion Planning for Online Goal Inference in Continuous Domains},
-  author={Zhi-Xuan, Tan and Kondic, Jovana and Slocum, Stewart and Tenenbaum, Joshua B and Mansinghka, Vikash K and Hadfield-Menell, Dylan}
+@inproceedings{zhixuan2023bayesian,
+  title = {Bayesian Inverse Motion Planning for Online Goal Inference in Continuous Domains},
+  author = {Zhi-Xuan, Tan and Kondic, Jovana and Slocum, Stewart and Tenenbaum, Joshua B and Mansinghka, Vikash K and Hadfield-Menell, Dylan},
+  booktitle = {ICRA 2023 Workshop on Cognitive Modeling in Robot Learning},
+  year = {2023},
+  month = jun,
+  url = {https://sites.google.com/view/cognitive-modeling-icra2023-ws/contributions?authuser=0#h.dk14d3kbwe65},
 }
 ```
 
@@ -112,9 +116,10 @@ If you find this code useful in your research, please cite the following:
   title={Monte Carlo Methods for Motion Planning and Goal Inference},
   author={Kondic, Jovana},
   year={2024},
-  school={Massachusetts Institute of Technology}
+  school={Massachusetts Institute of Technology},
+  url = {https://hdl.handle.net/1721.1/153789}
 }
 ```
 
 ## 📄 License
-This project is licensed under the MIT License. See the LICENSE.md file for details.
+This project is licensed under the Apache License. See the LICENSE.md file for details.
